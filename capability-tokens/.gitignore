@@ -5,3 +5,11 @@ node_modules/
 apps/node_modules/
 apps/.env
 scripts/am/may-act.js
+
+# Terraform local state and provider cache. The state names tenant objects and
+# holds the client secrets in plaintext; it is not something to commit.
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars

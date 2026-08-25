@@ -6,16 +6,28 @@ RFC 8693 **token exchange** that mints a short-lived token carrying exactly one
 capability. The resource server does not trust that capability on its face — it
 asks AM's policy engine.
 
-**Status: Phase 1 complete.** Two fastify apps, a registration journey, and an
-idempotent `provision.sh` that builds the whole thing in a tenant from nothing.
-Terraform (phase 3) is next; [PLAN.md](PLAN.md) has the build order, and
-[docs/walkthrough.md](docs/walkthrough.md) is the script a presenter reads
-from.
+**Status: complete.** `terraform apply` builds the whole thing in a tenant from
+nothing, two fastify apps drive it, and a registration journey lets a viewer
+create a user and watch the policy answer change. `scripts/provision.sh` is
+still here as the shell equivalent and as the thing Terraform is checked
+against — if the two produce different tenants, one of them is wrong.
+[PLAN.md](PLAN.md) has the build order and what each phase found;
+[docs/walkthrough.md](docs/walkthrough.md) is the script a presenter reads from.
 
 ```sh
 cp .env.example .env      # fill in the secrets
 aic login                 # in your pingone-aic-manager checkout
-scripts/provision.sh
+
+export PINGONEAIC_TENANT_URL="$CAPTOKEN_TENANT_URL"
+export PINGONEAIC_ACCESS_TOKEN="$(aic --no-prompt whoami --token)"
+export TF_VAR_login_client_secret="$CAPTOKEN_LOGIN_CLIENT_SECRET"
+export TF_VAR_caller_client_secret="$CAPTOKEN_CALLER_CLIENT_SECRET"
+
+terraform -chdir=terraform init
+terraform -chdir=terraform apply
+scripts/seed.sh           # the IDM fixtures Terraform does not own
+scripts/write-env.sh      # terraform output -> apps/.env
+
 cd apps && npm install && npm run dev   # http://127.0.0.1:8790
 ```
 
@@ -85,8 +97,35 @@ editing a policy in AM changes the answer with no deploy.
 
 ## Running it
 
-`scripts/provision.sh` builds everything in the tenant and is safe to re-run;
-`scripts/teardown.sh` removes exactly what it created and nothing else.
+### Terraform owns the config; a script owns the fixtures
+
+`terraform/` declares everything that is **configuration**: the resource type,
+both policy sets, the six policies, the four AM scripts, the registration
+journey and the two OAuth2 clients. `scripts/seed.sh` creates the **fixtures**:
+three `managed/bravo_role` records and two demo users.
+
+That split is not arbitrary. Those are managed *records*, not config — the
+provider models IDM schema, not the rows in it — and registration creates more
+users at runtime anyway, so the tenant's user table was never Terraform's to
+declare. There is one other thing Terraform cannot produce: reaching
+`?_action=evaluate` needs a **service-account** bearer, and AIC service accounts
+are created in the console. That stays a prerequisite.
+
+`terraform -chdir=terraform destroy` removes the config; `scripts/teardown.sh`
+removes everything including the fixtures.
+
+`scripts/write-env.sh` turns `terraform output -json` into `apps/.env`, so the
+apps use the names Terraform actually created rather than the names someone
+assumed. The tenant URL and the two client secrets are not outputs — the
+hostname is customer-identifying and the secrets are inputs, not products — so
+they come from the environment, the same place Terraform got them.
+
+### The shell path, still supported
+
+`scripts/provision.sh` builds the identical tenant with `curl` and `jq`, and is
+safe to re-run. It is kept deliberately: it is what Terraform is compared
+against, and it is the faster way to read what the demo actually creates.
+
 `scripts/chain.sh` exercises the whole flow without the apps, which is the
 fastest way to tell whether the tenant or the app is at fault.
 
@@ -98,10 +137,9 @@ customer-identifying and stays out of this repo.
 
 ## What exists in the tenant
 
-Everything below lives in the **`bravo`** realm and is created by
-`scripts/provision.sh`; `alpha` is never touched. Phase 3 replaces the script
-with Terraform, and until then the script is the specification Terraform has to
-match.
+Everything below lives in the **`bravo`** realm; `alpha` is never touched.
+Terraform creates all of it except the last three rows, which `scripts/seed.sh`
+does.
 
 | Kind | Name | Purpose |
 | ---- | ---- | ------- |

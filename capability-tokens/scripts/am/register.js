@@ -41,10 +41,26 @@ if (callbacks.isEmpty()) {
 } else {
   // The next-gen callback getters hand back the submitted value itself, not a
   // callback object to read it out of.
-  var email = String(callbacks.getNameCallbacks().get(0));
+  var email = trim(callbacks.getNameCallbacks().get(0));
   var password = String(callbacks.getPasswordCallbacks().get(0));
   var roles = chosenRoles(callbacks.getStringAttributeInputCallbacks().get(0));
 
+  // Without this the node happily "registers" a blank user: AM issues a
+  // session, the caller sees a tokenId, and no record was ever created. A
+  // caller that trusts the tokenId then fails one step later with
+  // "Resource owner authentication failed", which points at the wrong thing.
+  if (!email || !password) {
+    action.withErrorMessage("An email address and a password are both required.").goTo("error");
+  } else {
+    register(email, password, roles);
+  }
+}
+
+function trim(value) {
+  return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
+}
+
+function register(email, password, roles) {
   try {
     openidm.create("managed/bravo_user", null, {
       userName: email,
@@ -56,8 +72,12 @@ if (callbacks.isEmpty()) {
       roles: roles
     });
   } catch (e) {
+    // `goTo` records the outcome; it does not stop the script. Returning here
+    // is what stops a failed create from falling through to `created` — which
+    // it did, reporting success for a user that does not exist.
     logger.error("CapTokenDemo/register create failed for " + email + ": " + e);
     action.withErrorMessage("Could not register " + email + ": " + e).goTo("error");
+    return;
   }
 
   // The tree has to know who it just authenticated, or success has no subject.

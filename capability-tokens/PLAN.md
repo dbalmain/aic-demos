@@ -219,7 +219,7 @@ scripts/         provision.sh, teardown.sh, chain.sh, aicurl.sh, am/*.js
 docs/            walkthrough.md
 ```
 
-### Phase 2 — `aic policy`
+### Phase 2 — `aic policy` — ✅ done 2026-08-25
 
 A new `src/policy/` vertical in `pingone-aic-manager`, following the §9 seams
 (`api`, `state`, `ops`, `spec`, `cli`; `screen`/`view` only if a tab lands).
@@ -232,7 +232,7 @@ aic policy list|show|pull|push|rm
 aic policy eval --resource … --action … --subject-jwt … [--env …]
 ```
 
-`eval` is the one that earns its keep — a policy REPL beats the console for
+**Built.** `eval` is the one that earned its keep — a policy REPL beats the console for
 debugging a deny, and the demo needs exactly that during a walkthrough. Content
 snapshots for conflict detection, per CLAUDE.md §5 (policies *do* have
 `lastModifiedDate` but the same revert-detection argument applies).
@@ -240,7 +240,7 @@ snapshots for conflict detection, per CLAUDE.md §5 (policies *do* have
 A TUI tab is a later, separate decision — it is ~20 arms across six files
 (CLAUDE.md §9), so it should not ride along on this work.
 
-### Phase 3 — Terraform resources
+### Phase 3 — Terraform resources — ✅ done 2026-08-25
 
 In `terraform-provider-pingone-aic`, an `internal/policy/` catalog plus:
 
@@ -261,7 +261,7 @@ Policy `subject` and `condition` are recursive discriminated unions
 (`AND`/`OR`/`NOT` wrapping leaves). `internal/idm/`'s recursive catalog is the
 precedent to copy, not `internal/nodetype/`'s flat specs.
 
-### Phase 4 — Terraform-driven demo
+### Phase 4 — Terraform-driven demo — ✅ done 2026-08-25
 
 Replace `scripts/provision.sh` with `terraform/` in the demo repo; the apps read
 tenant URL, client ids and secrets from `terraform output -json`. `provision.sh`
@@ -362,3 +362,76 @@ a service-account bearer (`aic whoami --token`) — reads only:
 Neither repo has any policy support today: no `policy` module in
 `pingone-aic-manager/src/`, no policy resource in the provider, and no
 `docs/api/` file covering the policy API.
+
+
+## What phases 2–4 found
+
+### Phase 2 — `aic policy`
+
+Built as `src/policy/` in `pingone-aic-manager`, CLI-only, documented in
+`docs/CLI.md`. The commands are the ones sketched above; the interesting part is
+`eval`.
+
+AM answers a refusal with `actions: {}`, which is "no policy applied" and covers
+a resource that matched nothing, a subject that failed, and a condition that
+failed — with nothing in the response to tell them apart. So `eval` reads the
+set, its resource types and its policies and reconstructs the reason. Its best
+line diffs the presented token against the policy:
+
+```
+- policy CapTokenDemo_PaymentsRefund wants claim demoRoles="payments.admin";
+  the token has ["orders.approver","orders.reader"]
+```
+
+Building that needed AM's URL wildcard rules, which turned out **not** to be
+what the vendor docs describe. Measured against a throwaway policy in `bravo`
+and now tabulated in `21-am-policies.md`: `*` crosses `/` and `-*-` does not, a
+query string is matched as part of the resource, matching is case-insensitive,
+and a missing port is defaulted by scheme. Each row is a test.
+
+### Phase 3 — Terraform resources
+
+`pingoneaic_resource_type`, `pingoneaic_policy_set` and `pingoneaic_policy`,
+plus generate support, in the provider.
+
+The design problem was that `subject` and `condition` are recursive
+discriminated unions and a Terraform schema is static. Rather than guess, the
+depth was measured: across the sandbox's two realms — 44 policies in a live
+customer realm plus the demo's six — the deepest subject tree is **three**, and
+no policy uses a condition at all. The schema unrolls to six levels and errors
+above that, because silently truncating a subject would widen the policy to
+everyone.
+
+The suspected OAuth2 catalog gap was not real: `tokenExchangeAuthLevel`,
+`accessTokenMayActScript` and `validateScopeScript` are all there, and generate
+round-trips the demo's two token-exchange clients cleanly.
+
+One genuine provider bug fell out of using it: a script written with the
+`SCRIPTED_DECISION_NODE` alias failed apply with "Provider produced inconsistent
+result after apply", because AM stores `AUTHENTICATION_TREE_DECISION_NODE` and
+`context` is a Required attribute. The provider's own docs advertise the alias,
+so this was reachable by following them.
+
+### Phase 4 — Terraform-driven demo
+
+`terraform/` builds the config; `scripts/seed.sh` creates the IDM fixtures.
+The split is described in [README.md](README.md#running-it) and it is the one
+place the original plan was wrong: Terraform cannot own the roles and users,
+because they are managed *records* rather than config.
+
+Verified the way the plan asked for — `teardown.sh`, then `terraform apply` into
+the emptied realm, then `seed.sh`, then `chain.sh` — and the output is identical
+to the hand-provisioned tenant, allow for allow and deny for deny. Then a new
+user registered through the UI with `payments.admin` only and got the mirror
+image of alice: refund allowed, both order capabilities refused.
+
+Two bugs found by doing that, both in the registration script and both invisible
+until something went wrong:
+
+- **`action.goTo()` records an outcome; it does not stop the script.** A failed
+  `openidm.create` logged the error, set the `error` outcome, and then fell
+  through to `action.goTo("created")`. AM issued a session and the caller saw a
+  `tokenId` for a user that was never created — the failure surfaced one step
+  later as "Resource owner authentication failed", pointing at the wrong thing.
+- **No validation of the submitted email or password**, which is how the first
+  bug was reachable at all.
