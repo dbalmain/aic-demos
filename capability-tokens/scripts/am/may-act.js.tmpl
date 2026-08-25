@@ -1,0 +1,6 @@
+// CapTokenDemo — the sign-in client hands the caller client the right to act
+// for this user. Without a may_act claim naming it, every exchange it attempts
+// comes back `invalid_request: Invalid token exchange.`
+//
+// Generated from may-act.js.tmpl by provision.sh; edit the template.
+token.setMayAct({ client_id: "@@CALLER_CLIENT@@" });

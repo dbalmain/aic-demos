@@ -1,0 +1,17 @@
+{
+  "name": "@captoken/shop-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "dependencies": {
+    "@captoken/shared": "*",
+    "fastify": "^5.1.0",
+    "@fastify/formbody": "^8.0.1",
+    "@fastify/cookie": "^11.0.1",
+    "pino-pretty": "^13.0.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

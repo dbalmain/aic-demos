@@ -1,0 +1,7 @@
+.env
+node_modules/
+*.log
+.aic/
+apps/node_modules/
+apps/.env
+scripts/am/may-act.js

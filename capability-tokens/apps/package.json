@@ -1,0 +1,13 @@
+{
+  "name": "captoken-demo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "shop-api",
+    "shop-web"
+  ],
+  "scripts": {
+    "dev": "node run.js"
+  }
+}
