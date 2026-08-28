@@ -6,10 +6,10 @@ the authorized intent of one business transaction across four internal
 services — reaching the last one byte for byte identical to how it left the
 first.
 
-**Status: design.** Nothing is built. Read
-[`ARCHITECTURE.md`](ARCHITECTURE.md) — or the rendered
-[`docs/architecture.html`](docs/architecture.html) — and answer the open
-questions at the end of it.
+**Status: agreed, not built.** **AIC is the Transaction Token Service** — we
+follow the spirit of the draft and record the four wire details the product
+cannot match. Read [`ARCHITECTURE.md`](ARCHITECTURE.md), or the rendered
+[`docs/architecture.html`](docs/architecture.html).
 
 The brief this is built from is [`docs/brief.md`](docs/brief.md).
 
@@ -17,8 +17,8 @@ The brief this is built from is [`docs/brief.md`](docs/brief.md).
 
 | Path | What goes there |
 | --- | --- |
-| `apps/` | portal + BFF, the TTS, the activity API, the ledger, the nightly job |
-| `terraform/` | the AIC config: OAuth2 clients, the issuance policies, any scripts |
+| `apps/` | portal + BFF, the activity API, the ledger, the nightly job |
+| `terraform/` | the AIC config — this is where the TTS lives: OAuth2 clients, the validate-scope and token-modification scripts, the issuance policies |
 | `scripts/` | seed data and the local run/teardown helpers |
 | `docs/` | the brief, the architecture, and the departures-from-the-draft log |
 
