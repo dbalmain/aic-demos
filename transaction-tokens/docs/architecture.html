@@ -1,0 +1,723 @@
+<title>Txn-Token Trust Domain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+  :root {
+    --paper:      #f6f5f2;
+    --paper-sunk: #eceae4;
+    --card:       #fffefc;
+    --ink:        #16181c;
+    --slate:      #5c6672;
+    --slate-soft: #8b939c;
+    --rule:       #dcd9d1;
+    --brass:      #a76a1f;
+    --brass-wash: #f4ead9;
+    --verified:   #2f6a4b;
+    --refused:    #9d3327;
+
+    --measure: 68ch;
+    --step--1: 0.82rem;
+    --step-0:  1.0rem;
+    --step-1:  1.22rem;
+    --step-2:  1.55rem;
+    --step-3:  2.1rem;
+    --step-4:  3.0rem;
+
+    --sans: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #14161a;
+      --paper-sunk: #101215;
+      --card:       #1b1e23;
+      --ink:        #eceae4;
+      --slate:      #a2aab4;
+      --slate-soft: #737c87;
+      --rule:       #2c3138;
+      --brass:      #d9a45c;
+      --brass-wash: #2a2118;
+      --verified:   #6cbf92;
+      --refused:    #e08a7d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #14161a;
+    --paper-sunk: #101215;
+    --card:       #1b1e23;
+    --ink:        #eceae4;
+    --slate:      #a2aab4;
+    --slate-soft: #737c87;
+    --rule:       #2c3138;
+    --brass:      #d9a45c;
+    --brass-wash: #2a2118;
+    --verified:   #6cbf92;
+    --refused:    #e08a7d;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 clamp(1.1rem, 4vw, 3rem) 6rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    display: grid;
+    gap: 1.1rem;
+    padding: clamp(3rem, 8vw, 6rem) 0 2.4rem;
+    border-bottom: 1px solid var(--rule);
+    max-width: var(--measure);
+  }
+  .eyebrow {
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--slate);
+    font-weight: 600;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .pill {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+    border-radius: 2px;
+    background: var(--brass-wash);
+    color: var(--brass);
+    border: 1px solid color-mix(in srgb, var(--brass) 35%, transparent);
+  }
+  h1 {
+    font-family: var(--serif);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: clamp(2.2rem, 6vw, var(--step-4));
+    line-height: 1.03;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: var(--step-1);
+    line-height: 1.5;
+    color: var(--slate);
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- generic sections ---------- */
+
+  section { padding-top: 3.4rem; }
+  section > * { max-width: var(--measure); }
+
+  h2 {
+    font-family: var(--serif);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: var(--step-2);
+    line-height: 1.15;
+    letter-spacing: -0.012em;
+    margin: 0 0 0.35rem;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: var(--step-0);
+    margin: 2rem 0 0.3rem;
+    letter-spacing: -0.005em;
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--slate-soft);
+    margin: 0 0 0.9rem;
+  }
+  p { margin: 0 0 1.05rem; text-wrap: pretty; }
+  a { color: var(--brass); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--paper-sunk);
+    padding: 0.08em 0.34em;
+    border-radius: 3px;
+  }
+  strong { font-weight: 600; }
+
+  /* ---------- diagram ---------- */
+
+  .diagram-block { max-width: none; margin-top: 1.6rem; }
+  .diagram-scroll {
+    overflow-x: auto;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1.4rem 1.2rem;
+  }
+  .diagram-scroll svg { display: block; min-width: 720px; width: 100%; height: auto; }
+
+  .svg-panel  { fill: var(--paper-sunk); stroke: var(--rule); }
+  .svg-box    { fill: var(--card); stroke: var(--rule); stroke-width: 1.2; }
+  .svg-box-hi { fill: var(--card); stroke: var(--brass); stroke-width: 1.8; }
+  .svg-store  { fill: var(--paper-sunk); stroke: var(--rule); stroke-width: 1.2; }
+  .t-name  { font-family: var(--sans); font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .t-sub   { font-family: var(--mono); font-size: 9.5px; fill: var(--slate); }
+  .t-panel { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; fill: var(--slate-soft); text-transform: uppercase; }
+  .t-edge  { font-family: var(--mono); font-size: 9.5px; fill: var(--slate); }
+  .t-edge-hi { font-family: var(--mono); font-size: 9.5px; font-weight: 700; fill: var(--brass); }
+  .e-thin { stroke: var(--slate-soft); stroke-width: 1.2; fill: none; }
+  .e-bold { stroke: var(--brass); stroke-width: 2.4; fill: none; }
+  .e-dash { stroke: var(--slate-soft); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.4rem;
+    margin-top: 0.9rem;
+    font-size: var(--step--1);
+    color: var(--slate);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .swatch { width: 26px; height: 0; border-top-style: solid; }
+  .swatch.bold { border-top: 2.6px solid var(--brass); }
+  .swatch.thin { border-top: 1.4px solid var(--slate-soft); }
+  .swatch.dash { border-top: 1.4px dashed var(--slate-soft); }
+
+  /* ---------- numbered chain ---------- */
+
+  ol.chain { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 0; }
+  ol.chain li {
+    display: grid;
+    grid-template-columns: 2.6rem 1fr;
+    gap: 0 0.9rem;
+    padding: 0.72rem 0;
+    border-top: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  ol.chain li:last-child { border-bottom: 1px solid var(--rule); }
+  ol.chain .n {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--brass);
+    font-variant-numeric: tabular-nums;
+  }
+  ol.chain li.quiet .n { color: var(--slate-soft); }
+  ol.chain .what { margin: 0; }
+  ol.chain .who {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    color: var(--slate-soft);
+    display: block;
+    margin-bottom: 0.1rem;
+  }
+
+  /* ---------- tables ---------- */
+
+  .table-scroll { overflow-x: auto; margin: 1.3rem 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; min-width: 32rem; }
+  th, td { text-align: left; padding: 0.6rem 1rem 0.6rem 0; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  th {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--slate-soft);
+    font-weight: 500;
+    border-bottom-color: var(--ink);
+  }
+  td.mono, th.mono { font-family: var(--mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  td.never { color: var(--slate); }
+
+  /* ---------- callout ---------- */
+
+  .finding {
+    border-left: 3px solid var(--verified);
+    background: color-mix(in srgb, var(--verified) 7%, transparent);
+    padding: 1.05rem 1.3rem;
+    margin: 1.4rem 0;
+    border-radius: 0 3px 3px 0;
+  }
+  .finding p:last-child { margin-bottom: 0; }
+  .finding .tag {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--verified);
+    font-weight: 700;
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+
+  /* ---------- token ---------- */
+
+  .token-block { max-width: none; margin-top: 1.5rem; }
+  .token-scroll {
+    overflow-x: auto;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+  }
+  pre.token {
+    font-family: var(--mono);
+    font-size: 0.79rem;
+    line-height: 1.72;
+    margin: 0;
+    padding: 1.3rem 1.5rem;
+    color: var(--ink);
+  }
+  pre.token .k { color: var(--slate); }
+  pre.token .s { color: var(--ink); }
+  pre.token .c { color: var(--slate-soft); font-style: italic; }
+  pre.token .hi { color: var(--brass); font-weight: 700; }
+  pre.token .hdr {
+    display: block;
+    color: var(--slate-soft);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 0.66rem;
+    margin: 0 0 0.4rem;
+  }
+  pre.token .hdr:not(:first-child) { margin-top: 1.1rem; }
+
+  /* ---------- questions ---------- */
+
+  ol.questions { list-style: none; counter-reset: q; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 0.7rem; }
+  ol.questions li {
+    counter-increment: q;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1rem 1.25rem 1rem 3.3rem;
+    position: relative;
+  }
+  ol.questions li::before {
+    content: counter(q);
+    position: absolute;
+    left: 1.25rem;
+    top: 1rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--brass);
+    font-variant-numeric: tabular-nums;
+  }
+  ol.questions .q { font-weight: 600; display: block; margin-bottom: 0.15rem; }
+  ol.questions .a { color: var(--slate); font-size: 0.94rem; }
+  ol.questions p { margin: 0; }
+
+  ul.plain { padding-left: 1.15rem; margin: 0 0 1.05rem; }
+  ul.plain li { margin-bottom: 0.42rem; }
+
+  footer {
+    margin-top: 4.5rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--rule);
+    font-size: var(--step--1);
+    color: var(--slate-soft);
+    max-width: var(--measure);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">
+    <span>aic-demos / transaction-tokens</span>
+    <span class="pill">Proposed</span>
+  </div>
+  <h1>The token that outlives no hop</h1>
+  <p class="standfirst">
+    An account-management portal built to <code>draft-ietf-oauth-transaction-tokens-11</code>.
+    The manager's access token stops at the edge; a 60-second <strong>Txn-Token</strong>
+    carries the authorized intent of one transaction across four services, and reaches the
+    last one byte for byte identical to how it left the first.
+  </p>
+</header>
+
+<section>
+  <p class="kicker">The shape</p>
+  <h2>Five workloads, one trust domain, one token</h2>
+  <p>
+    PingOne AIC issues and introspects the manager's access token and hosts the issuance
+    policy. Everything inside the amber boundary is ours. Bold edges carry the Txn-Token.
+  </p>
+
+  <div class="diagram-block">
+  <div class="diagram-scroll">
+    <svg viewBox="0 0 940 706" role="img" aria-labelledby="diagtitle diagdesc">
+      <title id="diagtitle">Transaction token architecture</title>
+      <desc id="diagdesc">An account manager signs in to PingOne AIC and posts an activity to the BFF. The BFF exchanges the access token at the Transaction Token Service, which introspects the token at AM, checks issuance policy at the policy engine, and enriches the transaction context from IDM. The BFF then passes the resulting Txn-Token unmodified to the Activity API and on to the Ledger service, which writes to the store. A nightly accrual job mints its own Txn-Token from a self-signed subject token.</desc>
+
+      <defs>
+        <marker id="ah-thin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--slate-soft)"/>
+        </marker>
+        <marker id="ah-bold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--brass)"/>
+        </marker>
+      </defs>
+
+      <!-- AIC band -->
+      <rect class="svg-panel" x="30" y="30" width="880" height="102" rx="4"/>
+      <text class="t-panel" x="46" y="49">PingOne Advanced Identity Cloud</text>
+      <rect class="svg-box" x="60" y="60" width="240" height="56" rx="3"/>
+      <text class="t-name" x="76" y="83">OAuth2 provider</text>
+      <text class="t-sub"  x="76" y="99">issues + introspects</text>
+      <rect class="svg-box" x="350" y="60" width="240" height="56" rx="3"/>
+      <text class="t-name" x="366" y="83">Policy engine</text>
+      <text class="t-sub"  x="366" y="99">issuance policy · §8</text>
+      <rect class="svg-box" x="640" y="60" width="230" height="56" rx="3"/>
+      <text class="t-name" x="656" y="83">IDM</text>
+      <text class="t-sub"  x="656" y="99">managed users</text>
+
+      <!-- actor -->
+      <rect class="svg-box" x="60" y="182" width="200" height="52" rx="26"/>
+      <text class="t-name" x="82" y="204">Account manager</text>
+      <text class="t-sub"  x="82" y="220">browser · session cookie</text>
+
+      <!-- 1 sign in -->
+      <path class="e-thin" d="M 120 182 L 120 116" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="128" y="152">1 · sign in</text>
+
+      <!-- trust domain -->
+      <rect class="svg-panel" x="30" y="270" width="880" height="406" rx="4"/>
+      <text class="t-panel" x="46" y="289">Trust domain — acme-internal</text>
+
+      <rect class="svg-box-hi" x="70" y="312" width="230" height="60" rx="3"/>
+      <text class="t-name" x="88" y="337">BFF</text>
+      <text class="t-sub"  x="88" y="353">holds the access token</text>
+
+      <rect class="svg-box-hi" x="400" y="312" width="230" height="60" rx="3"/>
+      <text class="t-name" x="418" y="337">Txn-Token Service</text>
+      <text class="t-sub"  x="418" y="353">holds the signing key</text>
+
+      <rect class="svg-box" x="700" y="312" width="180" height="60" rx="3"/>
+      <text class="t-name" x="716" y="337">Nightly job</text>
+      <text class="t-sub"  x="716" y="353">self_signed subject</text>
+
+      <rect class="svg-box-hi" x="70" y="500" width="230" height="60" rx="3"/>
+      <text class="t-name" x="88" y="525">Activity API</text>
+      <text class="t-sub"  x="88" y="541">validates · hop 1</text>
+
+      <rect class="svg-box-hi" x="400" y="500" width="230" height="60" rx="3"/>
+      <text class="t-name" x="418" y="525">Ledger service</text>
+      <text class="t-sub"  x="418" y="541">validates · hop 2</text>
+
+      <rect class="svg-store" x="700" y="500" width="180" height="60" rx="3"/>
+      <text class="t-name" x="716" y="525">Store</text>
+      <text class="t-sub"  x="716" y="541">activities + ledger</text>
+
+      <!-- 2 post -->
+      <path class="e-thin" d="M 160 234 L 160 312" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="168" y="278">2 · POST /activities</text>
+
+      <!-- 3 exchange / 7 return -->
+      <path class="e-bold" d="M 300 330 L 400 330" marker-end="url(#ah-bold)"/>
+      <text class="t-edge-hi" x="304" y="323">3 · exchange</text>
+      <path class="e-bold" d="M 400 356 L 300 356" marker-end="url(#ah-bold)"/>
+      <text class="t-edge-hi" x="304" y="371">7 · Txn-Token</text>
+
+      <!-- 4 introspect -->
+      <path class="e-thin" d="M 430 312 L 430 258 L 180 258 L 180 116" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="196" y="252">4 · introspect</text>
+
+      <!-- 5 policy -->
+      <path class="e-thin" d="M 470 312 L 470 116" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="478" y="200">5 · may this workload assert this?</text>
+
+      <!-- 6 enrich -->
+      <path class="e-thin" d="M 600 312 L 600 236 L 755 236 L 755 116" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="612" y="230">6 · enrich tctx</text>
+
+      <!-- job -->
+      <path class="e-thin" d="M 700 342 L 630 342" marker-end="url(#ah-thin)"/>
+
+      <!-- 8 down -->
+      <path class="e-bold" d="M 185 372 L 185 500" marker-end="url(#ah-bold)"/>
+      <text class="t-edge-hi" x="196" y="430">8 · Txn-Token: header</text>
+      <text class="t-edge"    x="196" y="446">unmodified</text>
+
+      <!-- 9 across -->
+      <path class="e-bold" d="M 300 530 L 400 530" marker-end="url(#ah-bold)"/>
+      <text class="t-edge-hi" x="302" y="523">9 · same bytes</text>
+
+      <!-- ledger to store -->
+      <path class="e-thin" d="M 630 530 L 700 530" marker-end="url(#ah-thin)"/>
+
+      <!-- PDP callback -->
+      <path class="e-dash" d="M 560 116 L 560 168 L 900 168 L 900 590 L 300 590 L 300 560" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="574" y="163">optional: PDP calls back for the manager↔client link</text>
+    </svg>
+  </div>
+  <div class="legend">
+    <span><i class="swatch bold"></i>carries the Txn-Token</span>
+    <span><i class="swatch thin"></i>other calls</span>
+    <span><i class="swatch dash"></i>open question 1</span>
+  </div>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">The chain</p>
+  <h2>What happens when a manager records an activity</h2>
+  <ol class="chain">
+    <li><span class="n">1</span><p class="what"><span class="who">manager → AIC</span>Signs in. AIC issues an access token scoped <code>portal.activities</code>.</p></li>
+    <li><span class="n">2</span><p class="what"><span class="who">manager → BFF</span>Posts the activity: client, type, cost, date delivered, and a free-text note.</p></li>
+    <li><span class="n">3</span><p class="what"><span class="who">BFF → TTS</span>RFC 8693 exchange. <code>request_details</code> <em>proposes</em> the type, cost and date. The BFF is the only workload that ever sees the access token.</p></li>
+    <li><span class="n">4</span><p class="what"><span class="who">TTS → AIC</span>Introspects the subject token. Its real scope is the ceiling; if the scope cannot be determined, the request is refused rather than treated as unconstrained.</p></li>
+    <li><span class="n">5</span><p class="what"><span class="who">TTS → AIC policy</span>May <em>this workload</em> request this internal scope, and assert these <code>tctx</code> fields? The BFF may assert a cost; the nightly job may not.</p></li>
+    <li><span class="n">6</span><p class="what"><span class="who">TTS</span>Enriches. The TTS — not the caller — decides what lands in <code>tctx</code>, adding a client tier and an approval flag nobody asked for.</p></li>
+    <li><span class="n">7</span><p class="what"><span class="who">TTS → BFF</span>Returns a signed JWT, <code>typ: txntoken+jwt</code>, good for 60 seconds, audienced to the <em>trust domain</em>.</p></li>
+    <li><span class="n">8</span><p class="what"><span class="who">BFF → Activity API</span>Workload identity in <code>Authorization</code>; the Txn-Token in its own <code>Txn-Token</code> header. Signature, audience and expiry checked before anything else happens.</p></li>
+    <li><span class="n">9</span><p class="what"><span class="who">Activity API → Ledger</span>The same header, forwarded untouched. The ledger validates independently and reads cost and type from <code>tctx</code> — never from the body.</p></li>
+    <li class="quiet"><span class="n">—</span><p class="what"><span class="who">nightly job → TTS</span>The internally-initiated flow: no user token anywhere, a self-signed JWT as <code>subject_token</code>, and a policy that refuses it the fields the BFF is allowed.</p></li>
+  </ol>
+</section>
+
+<section>
+  <p class="kicker">Workloads</p>
+  <h2>Who holds what</h2>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Workload</th><th class="mono">Port</th><th>Holds</th><th>Never holds</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>portal <span style="color:var(--slate-soft)">(SPA, served by the BFF)</span></td><td class="mono">9000</td><td>a session cookie</td><td class="never">any token</td></tr>
+      <tr><td>portal-bff</td><td class="mono">9000</td><td>the <strong>access token</strong></td><td class="never">a Txn-Token it did not just mint</td></tr>
+      <tr><td>txn-token-service</td><td class="mono">9001</td><td>the <strong>signing key</strong></td><td class="never">anything durable</td></tr>
+      <tr><td>activity-api</td><td class="mono">9002</td><td>the Txn-Token in flight</td><td class="never">the access token</td></tr>
+      <tr><td>ledger-service</td><td class="mono">9003</td><td>the Txn-Token in flight</td><td class="never">the access token</td></tr>
+      <tr><td>accrual-job</td><td class="mono">—</td><td>its own self-signed key</td><td class="never">any user token</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:1.1rem;color:var(--slate);font-size:0.94rem">
+    Five processes, so a token can be watched crossing four boundaries. The portal is served
+    by the BFF rather than run separately — one fewer process, and the draft has nothing to
+    say about how the SPA is delivered.
+  </p>
+</section>
+
+<section>
+  <p class="kicker">Decisions</p>
+  <h2>Three things worth arguing about</h2>
+
+  <h3>The TTS is ours, not AIC's</h3>
+  <p>
+    AIC's own token exchange is RFC 8693, and we already drove it in
+    <code>capability-tokens</code>. It is the wrong tool here — for reasons that are
+    properties of the product, not of our configuration:
+  </p>
+  <ul class="plain">
+    <li><code>requested_token_type</code> cannot be the <code>txn_token</code> URN; AM issues access, ID and refresh tokens.</li>
+    <li>The <code>typ: "txntoken+jwt"</code> header is not settable.</li>
+    <li>A <code>validate_scope</code> script can read arbitrary request parameters — we proved that last time — but it cannot make AM emit a token of a different type.</li>
+    <li><code>audience</code> is accepted and <strong>silently ignored</strong> unless a per-client flag is on; and even then the Txn-Token's <code>aud</code> must be a trust domain, not a registered client.</li>
+  </ul>
+  <p>
+    So the TTS is a small Fastify service — which is what the draft describes anyway. AIC's
+    role stays real rather than decorative: it issues and introspects the manager's access
+    token, which is what makes scope narrowing an actual constraint instead of theatre, and
+    its policy engine is the issuance policy below.
+  </p>
+
+  <h3>The issuance policy lives in AM</h3>
+  <p>
+    The draft leaves “which workload may request which scopes, and assert which
+    <code>tctx</code> fields” entirely to the implementer, and calls it the real
+    access-control surface of the pattern. Encoding it as AM policies makes it
+    Terraform-managed alongside everything else, and lets <code>aic policy eval</code>
+    <em>explain</em> a refusal — which is worth a great deal in a demo whose whole point is
+    legibility. Resource strings model each assertion:
+  </p>
+  <div class="token-scroll" style="max-width:var(--measure)">
+    <pre class="token"><span class="k">txn:scope:client:activity:write</span>
+<span class="k">txn:tctx:cost</span>
+<span class="k">txn:tctx:activity_type</span></pre>
+  </div>
+  <p style="margin-top:1.05rem">
+    with the requesting workload as the subject. “The BFF can assert a cost; the scheduled
+    job cannot” becomes a policy diff rather than an <code>if</code> buried in the TTS.
+  </p>
+
+  <h3>The manager↔client relationship — measured, not guessed</h3>
+  <p>
+    You asked whether the policies could look in the <em>app</em> for the account
+    manager↔client relationship, or whether IDM would be much easier. They turn out to be
+    the same mechanism.
+  </p>
+
+  <div class="finding">
+    <span class="tag">Probed live in bravo · 2026-08-28</span>
+    <p>
+      A <code>POLICY_CONDITION</code> script's bindings are <code>httpClient</code>,
+      <code>logger</code>, <code>username</code>, <code>resourceURI</code>,
+      <code>environment</code>, <code>advice</code>, <code>responseAttributes</code>,
+      <code>authorized</code>, <code>realm</code>, <code>scriptName</code>. There is
+      <strong>no <code>openidm</code> binding</strong> — a policy cannot query IDM directly
+      either.
+    </p>
+    <p>
+      And <code>httpClient</code> really does egress. A condition script fetched the tenant's
+      own <code>/am/json/serverinfo/*</code> <strong>and</strong>
+      <code>https://example.com/</code>, both 200, via
+      <code>new org.forgerock.http.protocol.Request()</code>. The throwaway script, policy,
+      policy set and resource type were deleted afterwards.
+    </p>
+  </div>
+
+  <p>
+    So both options are an outbound HTTP call from a Rhino script. The trade-off is not
+    effort:
+  </p>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th></th><th>Relationship in the app</th><th>Relationship in IDM</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>How the policy reads it</td><td class="mono">httpClient → activity-api</td><td class="mono">httpClient → /openidm/managed/…</td></tr>
+      <tr><td>Local development</td><td><strong>needs a public URL</strong> for the app</td><td>works as-is; IDM is already public</td></tr>
+      <tr><td>Credential for the call</td><td>a shared secret in an ESV</td><td>a service-account bearer, also in an ESV</td></tr>
+      <tr><td>What it demonstrates</td><td>a PDP consulting a business system</td><td>IDM relationships</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:1.2rem">
+    There is a third option that avoids the egress entirely and is arguably the most faithful
+    to the draft: <strong>the TTS resolves the relationship and enriches <code>tctx</code>
+    with it</strong>, and the AM policy decides on the enriched claim. The draft asks the TTS
+    to add a computed claim not present in the request anyway. The PDP then needs no callback,
+    and AM is still the decision point.
+  </p>
+</section>
+
+<section>
+  <p class="kicker">The artefact</p>
+  <h2>What actually travels</h2>
+  <p>
+    Amber marks the two claims the TTS added on its own authority. The free-text note is
+    <em>not</em> here — it rides in the request body, where it cannot be mistaken for
+    something integrity-critical.
+  </p>
+  <div class="token-block">
+  <div class="token-scroll">
+<pre class="token"><span class="hdr">header</span>{ <span class="k">"typ"</span>: <span class="s">"txntoken+jwt"</span>, <span class="k">"alg"</span>: <span class="s">"RS256"</span>, <span class="k">"kid"</span>: <span class="s">"tts-dev-1"</span> }
+<span class="hdr">payload</span>{
+  <span class="k">"iss"</span>:   <span class="s">"https://tts.acme-internal"</span>,      <span class="c">// optional in the draft; we set it</span>
+  <span class="k">"aud"</span>:   <span class="s">"acme-internal"</span>,                  <span class="c">// the TRUST DOMAIN, not a service</span>
+  <span class="k">"txn"</span>:   <span class="s">"01JG7Q4T2VYB8K"</span>,                 <span class="c">// one per business transaction</span>
+  <span class="k">"sub"</span>:   <span class="s">"am-alice"</span>,                       <span class="c">// the account manager</span>
+  <span class="k">"iat"</span>:   1787923140,
+  <span class="k">"exp"</span>:   1787923200,                       <span class="c">// 60 seconds</span>
+  <span class="k">"scope"</span>: <span class="s">"client:activity:write"</span>,          <span class="c">// internal intent, NOT the portal scope</span>
+  <span class="k">"req_wl"</span>: <span class="s">"portal-bff"</span>,                    <span class="c">// the workload that asked</span>
+
+  <span class="k">"tctx"</span>: {                                 <span class="c">// the TTS is authoritative here</span>
+    <span class="k">"client_ref"</span>:    <span class="s">"client-4471"</span>,
+    <span class="k">"activity_type"</span>: <span class="s">"advisory"</span>,
+    <span class="k">"cost_cents"</span>:    45000,
+    <span class="k">"delivered_on"</span>:  <span class="s">"2026-08-21"</span>,
+    <span class="hi">"client_tier"</span>:    <span class="hi">"gold"</span>,               <span class="c">// enriched, not requested</span>
+    <span class="hi">"needs_approval"</span>: <span class="hi">true</span>                 <span class="c">// enriched: cost &gt; tier threshold</span>
+  },
+
+  <span class="k">"rctx"</span>: {                                 <span class="c">// environmental</span>
+    <span class="k">"ip"</span>:     <span class="s">"203.0.113.7"</span>,
+    <span class="k">"authn"</span>:  <span class="s">"pwd+otp"</span>,
+    <span class="k">"portal"</span>: <span class="s">"acme-portal"</span>
+  }
+}</pre>
+  </div>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">Observability</p>
+  <h2>The part that makes it a demo</h2>
+  <p>
+    Every hop logs the <code>txn</code> value, which workload it is, what it validated and
+    what it decided — plus a <strong>hash</strong> of the token, never the token. A
+    <code>/trace/:txn</code> view then renders the decoded payload at each hop side by side,
+    so it is visually obvious that the same token traversed the chain unchanged. That
+    side-by-side is the screenshot this POC exists to produce.
+  </p>
+</section>
+
+<section>
+  <p class="kicker">Honesty</p>
+  <h2>Where this knowingly departs from the draft</h2>
+  <ul class="plain">
+    <li><strong>No mTLS on BFF→TTS.</strong> The draft requires mutual authentication there, because the access token is in flight on that hop. We stub workload identity with a bearer and say so loudly in the README.</li>
+    <li><strong>Static dev keys</strong> with a <code>kid</code>, committed and clearly marked as such.</li>
+    <li><strong>One trust domain.</strong> No cross-domain chaining.</li>
+  </ul>
+  <p style="color:var(--slate);font-size:0.94rem">This list grows as we hit things; it is a deliverable, not an appendix.</p>
+</section>
+
+<section>
+  <p class="kicker">Before building</p>
+  <h2>Open questions</h2>
+  <ol class="questions">
+    <li>
+      <p><span class="q">Where does the manager↔client relationship live?</span>
+      <span class="a">App, IDM, or enriched into <code>tctx</code> by the TTS. The PDP-calls-the-app version is the most striking and needs a tunnel so AIC can reach it.</span></p>
+    </li>
+    <li>
+      <p><span class="q">Does the account manager sign in for real?</span>
+      <span class="a">The brief says stub the IdP — but AIC is right there and <code>capability-tokens</code> already has the journey plumbing. Real sign-in costs little and makes scope narrowing meaningful rather than theatre.</span></p>
+    </li>
+    <li>
+      <p><span class="q">Storage.</span>
+      <span class="a">SQLite via <code>node:sqlite</code> — zero dependencies on Node 22+ — unless you would rather see Postgres.</span></p>
+    </li>
+    <li>
+      <p><span class="q">Crypto and algorithm.</span>
+      <span class="a"><code>jose</code>, as in <code>capability-tokens</code>. RS256 with a static dev keypair, or ES256?</span></p>
+    </li>
+    <li>
+      <p><span class="q">Realm.</span>
+      <span class="a"><code>bravo</code> alongside <code>capability-tokens</code>, or its own?</span></p>
+    </li>
+  </ol>
+</section>
+
+<footer>
+  Nothing is built yet. The brief lives at <code>transaction-tokens/docs/brief.md</code>;
+  this page is <code>transaction-tokens/ARCHITECTURE.md</code> made legible.
+</footer>
+
+</div>
