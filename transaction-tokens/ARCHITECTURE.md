@@ -1,31 +1,32 @@
 # Transaction tokens on AIC — architecture
 
-Status: **agreed**, not built. Decisions settled 2026-08-28.
+Status: **agreed**, not built. Decisions settled 2026-08-31.
 
 > A rendered version of this page — with the diagram drawn properly — is
-> [`docs/architecture.html`](docs/architecture.html), also published at
-> <https://claude.ai/code/artifact/c872b77c-7a16-4722-8e99-bb445fa6e71b>.
+> [`docs/architecture.html`](docs/architecture.html).
 
 The pattern is `draft-ietf-oauth-transaction-tokens-11`: a user's access token
-stops at the edge, and a short-lived **Txn-Token** carries the *authorized
-intent* of one business transaction across every internal hop. The brief is in
+stops at the edge, and a short-lived **Txn-Token** carries the _authorized
+intent_ of one business transaction across every internal hop. The brief is in
 [`docs/brief.md`](docs/brief.md).
 
 **AIC is the Transaction Token Service.** We follow the spirit of the draft and
 record where the product cannot match its letter — the list is short, and every
-item on it is a wire *label* rather than a mechanism.
+item on it is a wire _label_ rather than a mechanism.
 
 ## Settled
 
-| | |
-| --- | --- |
-| TTS | **AIC**, via the token-exchange grant plus an access-token-modification script |
-| IdP | **AIC**, for real — the account manager signs in |
-| manager↔client relationship | lives in **the app**; the TTS reads it and enriches `tctx` |
-| storage | SQLite via `node:sqlite` |
-| crypto | `jose`, RS256 — verification only; AIC signs |
-| realm | `bravo`, alongside `capability-tokens` |
-| services | Fastify |
+|                              |                                                                                                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TTS                          | **AIC**, via the token-exchange grant plus an access-token-modification script                                                                           |
+| IdP                          | **AIC**, for real — the account manager signs in                                                                                                         |
+| manager↔client relationship | lives in **AIC** — a custom managed object related to `bravo_user`, resolved in-process by the modification script's `openidm` binding, no outbound call |
+| storage                      | SQLite via `node:sqlite`                                                                                                                                 |
+| crypto                       | `jose`, RS256 — verification only; AIC signs                                                                                                             |
+| realm                        | `bravo`, alongside `capability-tokens`                                                                                                                   |
+| services                     | Fastify                                                                                                                                                  |
+| account manager `sub`        | human-readable, e.g. `am-alice` — not AIC's raw UUID                                                                                                     |
+| nightly job                  | tries a cost-bearing entry, gets refused by the issuance policy because it isn't the BFF, falls back to a cost-free entry — **the refusal is the demo**  |
 
 ## The shape
 
@@ -45,7 +46,7 @@ flowchart TB
         BFF["<b>BFF</b> · portal-bff"]
         API["<b>Activity API</b>"]
         LED["<b>Ledger</b>"]
-        JOB["Nightly job"]
+        JOB["Nightly job<br/><i>jwt-bearer, no user</i>"]
         DB[("SQLite")]
     end
 
@@ -55,13 +56,13 @@ flowchart TB
     AM --> VS
     VS -->|"4 · may this workload?"| PDP
     AM --> ATM
-    ATM -.->|"5 · who is this manager&#39;s client?"| API
-    ATM -->|"6 · assert these fields?"| PDP
-    AM ==>|"7 · Txn-Token"| BFF
-    BFF ==>|"8 · Txn-Token: header"| API
-    API ==>|"9 · same bytes"| LED
+    ATM -->|"5 · assert these fields?<br/>(client read in-process via openidm)"| PDP
+    AM ==>|"6 · Txn-Token"| BFF
+    BFF ==>|"7 · Txn-Token: header"| API
+    API ==>|"8 · same bytes"| LED
     LED --> DB
-    JOB ==>|"jwt-bearer, no user"| AM
+    JOB -.->|"9 · cost-bearing, refused by policy"| AM
+    JOB ==>|"10 · falls back, cost-free"| AM
 
     classDef a fill:#e8f0fe,stroke:#4285f4,stroke-width:2px
     classDef t fill:#fff4e5,stroke:#f59e0b,stroke-width:2px
@@ -84,47 +85,54 @@ throwaway scripts, all deleted afterwards. Written up in
 
 ### Works
 
-| Brief | How |
-| --- | --- |
-| §1 `request_context` / `request_details` | Arrive at the script as `requestProperties.requestParams.<name>` — single-element **arrays of strings**, so `JSON.parse(String(raw[0]))` |
-| §2 `aud` = trust domain | `accessToken.setField("aud", "acme-internal")`. Needs **no** audience whitelist and no realm flag — the whitelist constrains the request *parameter*, not the claim |
-| §2 `txn`, `sub`, `scope`, `req_wl` | `setField` |
-| §2 `tctx` / `rctx` as nested objects | `setField` takes nested objects and they survive to the JWT intact |
-| §2 60-second lifetime | the acting client's `accessTokenLifetime`, as in `capability-tokens` |
-| §3 TTS authoritative + enrichment | the modification script has both **`httpClient`** and **`openidm`**, so the client tier and approval flag are a real lookup against the app |
-| §4 scope narrowing | the validate-scope script, exactly as `capability-tokens` uses it |
-| §6 validation at every hop | our services verify against the realm's JWKS |
-| §8 issuance policy | AM policies. Both the validate-scope and modification scripts have a **`policy`** binding with `evaluate` / `evaluateTree` |
+| Brief                                    | How                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 `request_context` / `request_details` | Arrive at the script as `requestProperties.requestParams.<name>` — single-element **arrays of strings**, so `JSON.parse(String(raw[0]))`                            |
+| §2 `aud` = trust domain                  | `accessToken.setField("aud", "acme-internal")`. Needs **no** audience whitelist and no realm flag — the whitelist constrains the request _parameter_, not the claim |
+| §2 `txn`, `sub`, `scope`, `req_wl`       | `setField`                                                                                                                                                          |
+| §2 `tctx` / `rctx` as nested objects     | `setField` takes nested objects and they survive to the JWT intact                                                                                                  |
+| §2 60-second lifetime                    | the acting client's `accessTokenLifetime`, as in `capability-tokens`                                                                                                |
+| §3 TTS authoritative + enrichment        | the modification script's **`openidm`** binding reads the manager↔client relationship and the client tier in-process — no network call, no tunnel                  |
+| §4 scope narrowing                       | the validate-scope script, exactly as `capability-tokens` uses it                                                                                                   |
+| §6 validation at every hop               | our services verify against the realm's JWKS                                                                                                                        |
+| §8 issuance policy                       | AM policies. Both the validate-scope and modification scripts have a **`policy`** binding with `evaluate` / `evaluateTree`                                          |
 
 ### Cannot
 
-| Brief | Why | What we do |
-| --- | --- | --- |
-| §1 `requested_token_type: …txn_token` | **Hard `invalid_request`.** The one extra parameter AM rejects — bisected against a working control | Send the access-token URN; note it |
-| §1 `issued_token_type` = the txn_token URN | AM reports what it issued | Note it |
-| §1 `token_type: "N_A"` | AM says `Bearer` | Note it |
-| §2 `typ: "txntoken+jwt"` | The header is not scriptable. `OAUTH2_SCRIPTED_JWT_ISSUER` has schema metadata but **no configuration hook anywhere in AIC** | Header stays `JWT`; note it |
+| Brief                                      | Why                                                                                                                          | What we do                         |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| §1 `requested_token_type: …txn_token`      | **Hard `invalid_request`.** The one extra parameter AM rejects — bisected against a working control                          | Send the access-token URN; note it |
+| §1 `issued_token_type` = the txn_token URN | AM reports what it issued                                                                                                    | Note it                            |
+| §1 `token_type: "N_A"`                     | AM says `Bearer`                                                                                                             | Note it                            |
+| §2 `typ: "txntoken+jwt"`                   | The header is not scriptable. `OAUTH2_SCRIPTED_JWT_ISSUER` has schema metadata but **no configuration hook anywhere in AIC** | Header stays `JWT`; note it        |
 
-All four are labels. Nothing about the *mechanism* — narrowing, enrichment,
+All four are labels. Nothing about the _mechanism_ — narrowing, enrichment,
 propagation, per-hop validation, the issuance policy — is compromised, which is
 what makes AIC-as-TTS a reasonable trade rather than a fudge.
 
-### The one operational cost: AIC has to reach the app
+### The relationship lives in AIC, not the app
 
-The relationship lives in the app, so the token-modification script calls
-`activity-api` to resolve it. That is a real outbound call from AIC to us, which
-means **the app needs a public URL** — a `cloudflared` or `ngrok` tunnel for
-local development, with the hostname in the gitignored `.env` and the shared
-secret in an ESV.
+The manager↔client relationship is a custom IDM managed object
+(`bravo_zzclient`, so named in the probe — the real demo will pick a proper
+name) with a relationship to `bravo_user`. The token-modification script's
+`openidm` binding reads it **in-process** — synchronous, no network call, no
+tunnel. This is a reversal from the earlier design, made because setup has to be
+a `terraform apply` plus a seed script, not "also stand up a tunnel."
 
-Worth being clear that this is a property of the choice and not of the
-mechanism: the alternative sources are no cheaper in code. A policy condition
-script has **no `openidm` binding** — probed 2026-08-28 — so even "look it up in
-IDM" is an outbound HTTP call from a script. The difference is only that IDM is
-already reachable and the app is not.
+Two things worth knowing before building it, both verified live on 2026-08-28
+and written up in `pingone-aic-manager/docs/api/10-managed-objects.md`:
 
-The demo pays that cost deliberately, because "the PDP consulted the business
-system" is the more interesting thing to show, and a tunnel is one command.
+- A custom property or reverse-relationship key added to a Ping-shipped managed
+  object (like `bravo_user`) **must** be prefixed `custom_` — not the realm
+  prefix, not any other name — and it comes back unindexed.
+- A relationship expansion via the `openidm` binding can read back **empty** for
+  several seconds after a `config/managed` schema write, even though the REST
+  API is correct throughout — a Terraform-apply-then-demo trap. The modification
+  script should fail closed on an empty expansion rather than read it as "no
+  relationship exists."
+
+A policy-condition script has **no `openidm` binding** — probed 2026-08-28 — so
+this trick is specific to the token-modification context.
 
 ### One trap worth designing around
 
@@ -135,7 +143,7 @@ object** — at top level it is coerced anyway, and `java.lang.Long` and
 
 ```javascript
 accessToken.setField("tctx", { cost_cents: java.lang.Integer.valueOf(45000) }); // 45000
-accessToken.setField("cost_cents", java.lang.Integer.valueOf(45000));           // 45000.0
+accessToken.setField("cost_cents", java.lang.Integer.valueOf(45000)); // 45000.0
 ```
 
 Money lives in `tctx`, which is where the draft wants it anyway.
@@ -180,20 +188,32 @@ exists to produce.
 
 1. `requested_token_type`, `issued_token_type`, `token_type` and the `typ`
    header — see [Cannot](#cannot). Product limits, measured.
-2. **No mTLS on the BFF→AIC exchange.** The draft requires mutual
-   authentication there because the access token is in flight. We use
-   `client_secret_basic` and say so.
+2. **No mTLS on the BFF→AIC exchange.** The draft requires mutual authentication
+   there because the access token is in flight. We use `client_secret_basic` and
+   say so.
 3. **No workload identity.** `Authorization` on internal hops is a stub bearer,
    not SPIFFE.
 4. **One trust domain.** No cross-domain chaining.
 5. **Signing keys are the realm's**, not TTS-specific. AIC owns them, which is
    arguably better than the draft's "static dev keys" concession.
-6. **The TTS reaches back into the trust domain** to resolve the
-   manager↔client relationship. The draft is silent on where a TTS gets its
-   enrichment data; this is a design choice, not a departure, but it is the
-   thing that makes the deployment need a tunnel.
+6. **Enrichment data lives inside AIC itself** (a custom managed object), not in
+   the app's own database. The draft is silent on where a TTS gets its
+   enrichment data; keeping it in AIC is what makes setup a `terraform apply`
+   with no tunnel.
+7. **The nightly job's `self_signed` subject_token has no AIC-native
+   equivalent.** AM has no self-signed token type for token exchange; the job
+   uses AIC's Trusted JWT Issuer / jwt-bearer feature (`aic jwt-bearer setup`)
+   as the closest analog — a pre-registered issuer and signing key, not a token
+   minted ad hoc by the job itself. It runs as an invokable
+   `scripts/run-job.sh`, not a real scheduler.
 
-## Open questions
+## Resolved
 
-Everything else is settled; these are what I would still like answered — see
-the message accompanying this revision.
+The two open questions from the previous revision are now settled:
+
+- **Manager↔client relationship**: in AIC, not the app — see above.
+- **Nightly job's purpose**: it exists to give the §8 issuance policy a second
+  row to contrast against the BFF's. It attempts a cost-bearing entry —
+  something only the BFF may assert — gets refused by the issuance policy
+  because it isn't the BFF, and falls back to writing a cost-free entry. The
+  refusal is the demonstration, not an error case to hide.

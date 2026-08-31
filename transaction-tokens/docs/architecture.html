@@ -382,7 +382,7 @@
     <tbody>
       <tr><td>Transaction Token Service</td><td><strong>AIC</strong> — the exchange grant plus an access-token-modification script</td></tr>
       <tr><td>Identity provider</td><td><strong>AIC</strong>, for real. The account manager signs in.</td></tr>
-      <tr><td>Manager ↔ client relationship</td><td>lives in <strong>the app</strong>; the TTS reads it and enriches <code>tctx</code></td></tr>
+      <tr><td>Manager ↔ client relationship</td><td>lives in <strong>AIC</strong> — a managed object read in-process via the <code>openidm</code> binding, no outbound call</td></tr>
       <tr><td>Storage</td><td>SQLite via <code>node:sqlite</code></td></tr>
       <tr><td>Crypto</td><td><code>jose</code>, RS256 — verification only; AIC signs</td></tr>
       <tr><td>Realm</td><td><code>bravo</code>, alongside <code>capability-tokens</code></td></tr>
@@ -406,7 +406,7 @@
   <div class="diagram-scroll">
     <svg viewBox="0 0 940 700" role="img" aria-labelledby="diagtitle diagdesc">
       <title id="diagtitle">Transaction token architecture with AIC as the TTS</title>
-      <desc id="diagdesc">The account manager signs in to PingOne AIC and posts an activity to the BFF. The BFF exchanges the access token at AIC, whose validate-scope script checks narrowing against the policy engine and whose token-modification script calls the Activity API for the manager's client relationship and asks the policy engine which fields this workload may assert. AIC returns the Txn-Token, which the BFF passes unmodified to the Activity API and on to the Ledger service, which writes to the store. A nightly job exchanges a self-signed JWT with no user token.</desc>
+      <desc id="diagdesc">The account manager signs in to PingOne AIC and posts an activity to the BFF. The BFF exchanges the access token at AIC, whose validate-scope script checks narrowing against the policy engine and whose token-modification script reads the manager's client relationship in-process from IDM and asks the policy engine which fields this workload may assert. AIC returns the Txn-Token, which the BFF passes unmodified to the Activity API and on to the Ledger service, which writes to the store. A nightly job, authenticated via jwt-bearer with no user token, tries to assert a cost the policy refuses it, then falls back to a cost-free entry.</desc>
 
       <defs>
         <marker id="ah-thin" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -519,7 +519,7 @@
   <div class="legend">
     <span><i class="swatch bold"></i>carries the Txn-Token</span>
     <span><i class="swatch thin"></i>other calls</span>
-    <span><i class="swatch dash"></i>needs the app reachable from AIC</span>
+    <span><i class="swatch dash"></i>refused by policy, falls back</span>
   </div>
   </div>
 </section>
@@ -532,12 +532,12 @@
     <li><span class="n">2</span><p class="what"><span class="who">manager → BFF</span>Posts the activity: client, type, cost, date delivered, and a free-text note.</p></li>
     <li><span class="n">3</span><p class="what"><span class="who">BFF → AIC</span>RFC 8693 exchange. <code>request_details</code> <em>proposes</em> the type, cost and date; the BFF is the only workload that ever sees the access token.</p></li>
     <li><span class="n">4</span><p class="what"><span class="who">validate-scope → policy</span>Is the requested internal scope within what the subject token actually carries? If the subject scope cannot be determined, refuse — never treat unknown as unconstrained.</p></li>
-    <li><span class="n">5</span><p class="what"><span class="who">token-mod → Activity API</span>Which client is this manager's, and what tier are they? The relationship lives in the app, so this is a real call back into the trust domain.</p></li>
+    <li><span class="n">5</span><p class="what"><span class="who">token-mod → IDM</span>Which client is this manager's, and what tier are they? Read in-process via the <code>openidm</code> binding — no outbound call, no tunnel.</p></li>
     <li><span class="n">6</span><p class="what"><span class="who">token-mod → policy</span>May <em>this workload</em> assert these <code>tctx</code> fields? The BFF may assert a cost; the nightly job may not. Then the script writes <code>tctx</code> — including two claims nobody requested.</p></li>
     <li><span class="n">7</span><p class="what"><span class="who">AIC → BFF</span>A signed JWT, 60 seconds, <code>aud</code> set to the trust domain rather than a client id.</p></li>
     <li><span class="n">8</span><p class="what"><span class="who">BFF → Activity API</span>Workload identity in <code>Authorization</code>; the Txn-Token in its own <code>Txn-Token</code> header. Signature, audience and expiry checked before anything else happens.</p></li>
     <li><span class="n">9</span><p class="what"><span class="who">Activity API → Ledger</span>The same header, forwarded untouched. The ledger validates independently and reads cost and type from <code>tctx</code> — never from the body.</p></li>
-    <li class="quiet"><span class="n">—</span><p class="what"><span class="who">nightly job → AIC</span>The internally-initiated flow: no user token anywhere, and a policy that refuses it the fields the BFF is allowed.</p></li>
+    <li class="quiet"><span class="n">—</span><p class="what"><span class="who">nightly job → AIC</span>The internally-initiated flow: no user token anywhere. It tries to assert a cost, the issuance policy refuses it because it isn't the BFF, and it falls back to a cost-free entry &mdash; the refusal is the demonstration.</p></li>
   </ol>
 </section>
 
@@ -603,18 +603,24 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
   </div>
   <p style="margin-top:1.05rem">Money lives in <code>tctx</code>, which is where the draft wants it anyway.</p>
 
-  <h3>The one operational cost</h3>
+  <h3>The relationship lives in AIC, not the app</h3>
   <p>
-    The relationship lives in the app, so the token-modification script calls
-    <code>activity-api</code> to resolve it — a real outbound call from AIC to us, which
-    means <strong>the app needs a public URL</strong>. A <code>cloudflared</code> tunnel for
-    local development, hostname in the gitignored <code>.env</code>, shared secret in an ESV.
+    The manager↔client relationship is a custom IDM managed object, related to
+    <code>bravo_user</code>. The token-modification script's <code>openidm</code> binding
+    reads it <strong>in-process</strong> — synchronous, no network call, no tunnel. This is
+    a reversal from an earlier design: setup has to be a <code>terraform apply</code> plus a
+    seed script, not "also stand up a tunnel."
   </p>
   <p>
-    That is a property of the choice, not of the mechanism, and the alternatives are no
-    cheaper in code: a policy condition script has <strong>no <code>openidm</code>
-    binding</strong> — probed the same day — so even “look it up in IDM” is an outbound HTTP
-    call from a script. The difference is only that IDM is already reachable.
+    Two traps to design around, both verified live: a custom property or reverse
+    relationship added to a Ping-shipped object (like <code>bravo_user</code>) must be
+    prefixed <code>custom_</code> — not the realm prefix, not any other name — and comes
+    back unindexed. And a relationship expansion via the <code>openidm</code> binding can
+    read back <strong>empty</strong> for several seconds after a schema write, even though
+    REST is correct the whole time — the script should fail closed on an empty expansion,
+    not read it as "no relationship exists." A policy-condition script has
+    <strong>no <code>openidm</code> binding</strong> at all — probed the same day — so this
+    trick is specific to the token-modification context.
   </p>
 </section>
 
@@ -643,7 +649,7 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
     <span class="k">"activity_type"</span>:  <span class="s">"advisory"</span>,
     <span class="k">"cost_cents"</span>:     45000,
     <span class="k">"delivered_on"</span>:   <span class="s">"2026-08-21"</span>,
-    <span class="hi">"client_tier"</span>:     <span class="hi">"gold"</span>,              <span class="c">// enriched from the app, not requested</span>
+    <span class="hi">"client_tier"</span>:     <span class="hi">"gold"</span>,              <span class="c">// enriched from IDM, not requested</span>
     <span class="hi">"needs_approval"</span>:  <span class="hi">true</span>                <span class="c">// enriched: cost &gt; tier threshold</span>
   },
 
@@ -678,7 +684,8 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
     <li><strong>No workload identity.</strong> <code>Authorization</code> on internal hops is a stub bearer, not SPIFFE.</li>
     <li><strong>One trust domain.</strong> No cross-domain chaining.</li>
     <li><strong>Signing keys are the realm's</strong>, not TTS-specific — arguably better than the draft's static-dev-keys concession, but not what it describes.</li>
-    <li><strong>The TTS reaches back into the trust domain</strong> for enrichment data. The draft is silent on where a TTS gets it; this is a design choice, and it is what makes the deployment need a tunnel.</li>
+    <li><strong>Enrichment data lives inside AIC itself</strong> (a managed object), not the app's own database. The draft is silent on where a TTS gets it; keeping it in AIC means setup is a <code>terraform apply</code>, no tunnel.</li>
+    <li><strong>The nightly job's <code>self_signed</code> subject_token has no AIC-native equivalent.</strong> AM has no self-signed token type for token exchange; the job uses AIC's Trusted JWT Issuer / jwt-bearer feature instead — a pre-registered issuer and key, not a token minted ad hoc by the job. It runs as an invokable script, not a real scheduler.</li>
   </ul>
   <p style="color:var(--slate);font-size:0.94rem">This list grows as we hit things; it is a deliverable, not an appendix.</p>
 </section>
