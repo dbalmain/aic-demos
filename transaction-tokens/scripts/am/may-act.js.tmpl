@@ -1,0 +1,8 @@
+// TxnDemo — hands the internal exchange client the right to act for this
+// subject. Without a may_act claim naming it, every exchange attempt comes
+// back invalid_request: Invalid token exchange. Used for both the account
+// manager's identity token and the nightly job's own service token — the
+// acting client is the same one either way (ARCHITECTURE.md).
+//
+// Generated from may-act.js.tmpl by Terraform; edit the template.
+token.setMayAct({ client_id: "@@CALLER_CLIENT@@" });
