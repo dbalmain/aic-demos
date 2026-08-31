@@ -1,0 +1,16 @@
+{
+  "name": "txn-token-demo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "portal-bff",
+    "activity-api",
+    "ledger-service",
+    "accrual-job"
+  ],
+  "scripts": {
+    "dev": "node run.js",
+    "job": "node accrual-job/run.js"
+  }
+}

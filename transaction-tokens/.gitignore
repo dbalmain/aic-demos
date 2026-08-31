@@ -5,6 +5,7 @@ node_modules/
 apps/node_modules/
 apps/.env
 apps/accrual-job/.keys/
+apps/ledger-service/ledger.sqlite
 
 # Terraform local state and provider cache. The state names tenant objects and
 # holds the client secrets in plaintext; it is not something to commit.
