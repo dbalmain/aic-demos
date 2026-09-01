@@ -182,7 +182,15 @@ export async function txnTokenVerifier(cfg, requiredScopes = []) {
       requiredClaims: ["exp", "iat", "sub", "txn", "req_wl", "tctx"],
       // Without this, `iat` may sit arbitrarily far in the future and the
       // 60-second lifetime means nothing.
+      //
+      // clockTolerance is not optional alongside it. jose rejects ANY `iat`
+      // in the future once maxTokenAge is set, with zero tolerance by
+      // default — so AIC's clock being one second ahead of a service host
+      // would fail every verification in the chain. Measured 2026-09-01: an
+      // iat 2s ahead is rejected without it and accepted with 5s, while one
+      // 30s ahead is still rejected. Ordinary NTP skew, not a loophole.
       maxTokenAge: "120s",
+      clockTolerance: "5s",
     });
     // `requiredClaims` proves a KEY EXISTS and nothing more: `sub: null`,
     // `txn: null` and `tctx: []` all satisfy it. That is the same
