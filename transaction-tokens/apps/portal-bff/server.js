@@ -67,7 +67,16 @@ app.post("/activities", async (req, reply) => {
 
   const { client_ref, activity_type, delivered_on, cost_cents, note } = req.body;
   const requestDetails = { client_ref, activity_type, delivered_on };
-  if (cost_cents) requestDetails.cost_cents = Number(cost_cents);
+  if (cost_cents !== undefined && cost_cents !== "") {
+    // Pass it through as the caller typed it, unless it is a finite number.
+    // Number("garbage") is NaN and Number("1e309") is Infinity; JSON.stringify
+    // turns both into `null`, which the mint script reads as "no cost asked
+    // for" — so malformed input came back looking exactly like a policy
+    // refusal. AIC is the thing that decides a cost is malformed; this hop's
+    // job is not to launder it into something else on the way.
+    const n = Number(cost_cents);
+    requestDetails.cost_cents = Number.isFinite(n) ? n : String(cost_cents);
+  }
   const requestContext = { ip: req.ip, authn: "pwd", portal: "acme-portal" };
 
   let result;

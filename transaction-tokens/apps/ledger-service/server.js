@@ -39,7 +39,8 @@ app.post("/entries", async (req, reply) => {
   if (!requireWorkload(cfg, req, reply)) return;
   const payload = await requireTxnToken(req, reply);
   if (!payload) return;
-  const inserted = record(payload);
+  const outcome = record(payload);
+  const inserted = outcome === "recorded";
   note({
     hop: "ledger-service",
     token: req.headers["txn-token"],

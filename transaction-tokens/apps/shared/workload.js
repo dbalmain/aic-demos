@@ -12,6 +12,20 @@
 // JWT; what the demo needs to show is the separation, not the mechanism.
 // Because it IS a stub, it is generated per-install by scripts/write-env.sh
 // rather than being a committed constant.
+//
+// Be precise about what this does and does not demonstrate, because the
+// difference is easy to overstate:
+//
+//   IT DOES show that a caller must hold a credential OTHER than the
+//   Txn-Token, checked before it, so the Txn-Token is never what authorises
+//   the call. That is the draft's requirement and it holds.
+//
+//   IT DOES NOT authenticate WHICH workload is calling. Every service
+//   presents the identical value, so ledger-service cannot tell activity-api
+//   from portal-bff, and cannot require that its caller was the previous hop.
+//   activity-api "presents its own" only in the sense that it does not replay
+//   the inbound header — the bytes are the same. Per-workload authentication
+//   needs per-workload credentials; see ARCHITECTURE.md's departures.
 import { timingSafeEqual } from "node:crypto";
 
 const enc = new TextEncoder();

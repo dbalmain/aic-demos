@@ -22,20 +22,28 @@ db.exec(`
 `);
 
 const insert = db.prepare(`
-  INSERT OR IGNORE INTO entries
+  INSERT INTO entries
     (txn, sub, client_ref, client_display, client_tier, activity_type, delivered_on, cost_cents, recorded_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
+const existing = db.prepare("SELECT 1 FROM entries WHERE txn = ?");
 
 /**
  * Records one entry from a Txn-Token's own claims — never from a request
  * body, which is exactly the property that makes tctx integrity-critical
- * rather than advisory. Returns whether this call actually inserted a new
- * row (false on a replay of the same txn).
+ * rather than advisory.
+ *
+ * Returns `"recorded"`, or `"replay"` when this txn is already on file.
+ * A plain INSERT, with the replay decided by an explicit lookup: `INSERT OR
+ * IGNORE` swallows EVERY constraint violation, so a token with a null `sub`
+ * tripped NOT NULL, changed no rows, and was reported to the caller as a
+ * replay of a transaction that had never happened. A real integrity error
+ * now throws and surfaces as a 500, which is what it is.
  */
 export function record(payload) {
+  if (existing.get(payload.txn)) return "replay";
   const tctx = payload.tctx ?? {};
-  const result = insert.run(
+  insert.run(
     payload.txn,
     payload.sub,
     tctx.client_ref ?? null,
@@ -46,7 +54,7 @@ export function record(payload) {
     tctx.cost_cents ?? null,
     new Date().toISOString(),
   );
-  return result.changes > 0;
+  return "recorded";
 }
 
 export function all() {

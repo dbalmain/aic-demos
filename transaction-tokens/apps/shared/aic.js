@@ -130,12 +130,14 @@ export function exchange(cfg, subjectToken, { requestDetails, requestContext }) 
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
     subject_token: subjectToken,
     subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
-    // The draft requires both of these on the request. AM ignores `audience`
-    // under this configuration (the trust domain is set by the modification
-    // script, not negotiated) and answers `requested_token_type` with the
-    // access-token URN rather than the draft's txn_token one — but it
-    // ACCEPTS both (verified 2026-09-01), so sending them costs nothing and
-    // keeps the wire request conformant. See ARCHITECTURE.md's departures.
+    // The draft requires both of these on the request, so they are sent
+    // rather than omitted. This does NOT make the request conformant: the
+    // draft's value for requested_token_type is the txn_token URN, which AM
+    // rejects outright, so what goes on the wire is the access-token URN as
+    // a substitute and AM answers in kind. `audience` AM ignores entirely —
+    // the trust domain is set by the modification script, not negotiated.
+    // Both are ACCEPTED (verified 2026-09-01), which is compatibility, not
+    // conformance. Still departures; see ARCHITECTURE.md.
     audience: cfg.trustDomain,
     requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
     scope: cfg.exchangeScope,
@@ -147,10 +149,12 @@ export function exchange(cfg, subjectToken, { requestDetails, requestContext }) 
 /**
  * A verifier for Txn-Tokens. Every hop calls this independently: no
  * introspection, no per-token callback to AIC, and no trust in whichever
- * service handed the token over. It is not fully offline — `jose` fetches
- * AIC's JWKS on the first verification and caches it, refetching only on an
- * unseen `kid` — so the honest claim is "no per-token callback", which is
- * what the pattern actually needs. README says it in those words.
+ * service handed the token over. It is not fully offline: `jose` fetches
+ * AIC's JWKS on the first verification and caches it, and reloads both on an
+ * unseen `kid` AND once its cache passes jose's default max age (10 minutes),
+ * so a verification after a quiet spell reaches AIC even for a key it already
+ * knows. The honest claim is "no per-token callback and no issuer decision",
+ * which is what the pattern actually needs. README says it in those words.
  *
  * `aud` is the trust domain the mint script set, not any one client's id.
  *
@@ -176,8 +180,24 @@ export async function txnTokenVerifier(cfg, requiredScopes = []) {
       audience: cfg.trustDomain,
       algorithms: ["RS256"],
       requiredClaims: ["exp", "iat", "sub", "txn", "req_wl", "tctx"],
+      // Without this, `iat` may sit arbitrarily far in the future and the
+      // 60-second lifetime means nothing.
+      maxTokenAge: "120s",
     });
-    if (typeof payload.tctx !== "object" || payload.tctx === null) {
+    // `requiredClaims` proves a KEY EXISTS and nothing more: `sub: null`,
+    // `txn: null` and `tctx: []` all satisfy it. That is the same
+    // passes-for-an-unrelated-reason shape this verifier was hardened
+    // against in the first place, so check the values.
+    for (const claim of ["sub", "txn", "req_wl"]) {
+      if (typeof payload[claim] !== "string" || payload[claim] === "") {
+        throw new Error(`${claim} is not a non-empty string`);
+      }
+    }
+    if (
+      typeof payload.tctx !== "object" ||
+      payload.tctx === null ||
+      Array.isArray(payload.tctx)
+    ) {
       throw new Error("tctx is not an object");
     }
     const held = Array.isArray(payload.scope)
