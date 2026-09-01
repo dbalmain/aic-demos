@@ -20,6 +20,12 @@
 # entry's RDN). Converge with PATCH when already there, and never re-send the
 # password — the realm's password history rejects re-setting the one already
 # stored.
+#
+# The consequence, and it bites: on a re-run the password in .env is NOT
+# applied. If you changed it, or these fixtures survive from an earlier
+# install with a different one, sign-in fails with a correct-looking .env.
+# The script says so rather than leaving you to discover it at the login
+# form; scripts/reset-password.sh is the way out.
 user() { # $1 id, $2 username, $3 password
   local id=$1 name=$2 password=$3
   if quiet GET "$IDM/managed/bravo_user/$id"; then
@@ -28,7 +34,7 @@ user() { # $1 id, $2 username, $3 password
       '[{operation:"replace",field:"/userName",value:$u},
         {operation:"replace",field:"/mail",value:$m},
         {operation:"replace",field:"/accountStatus",value:"active"}]')" &&
-      say "$name (updated)"
+      say "$name (already existed; password left as it was, NOT set from .env)"
   else
     quiet PUT "$IDM/managed/bravo_user/$id" --data "$(jq -n \
       --arg u "$name" --arg p "$password" \
@@ -52,5 +58,8 @@ quiet PUT "$IDM/managed/bravo_txn_client/$CLIENT_ACME" --data "$(jq -n \
   say "Acme Holdings (gold, managed by am-alice)"
 
 echo
-echo "Seeded. Once terraform apply and scripts/setup-jwtbearer.sh have both run,"
-echo "check it with: scripts/chain.sh"
+echo "Seeded. Once scripts/setup-jwtbearer.sh has run too, check the whole"
+echo "tenant side with: scripts/chain.sh"
+echo
+echo "If chain.sh cannot sign in as am-alice, the record predates this .env."
+echo "Reset it with:  scripts/reset-password.sh am-alice"

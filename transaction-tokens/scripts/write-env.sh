@@ -21,6 +21,13 @@ OUT=$(cd "$ROOT/terraform" && terraform output -json)
 get() { printf '%s' "$OUT" | jq -r ".$1.value"; }
 
 TARGET="$ROOT/apps/.env"
+
+# The internal workload credential (shared/workload.js) is generated here,
+# not configured: it is a per-install stub for what production does with
+# mTLS. Reuse the existing one on a re-run — rotating it while services are
+# up would 401 every internal hop until all three restart.
+INTERNAL_TOKEN=$(sed -n 's/^TXNDEMO_INTERNAL_TOKEN=//p' "$TARGET" 2>/dev/null | head -1)
+[ -n "$INTERNAL_TOKEN" ] || INTERNAL_TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '=+/' | cut -c1-40)
 cat > "$TARGET" <<ENV
 # Written by scripts/write-env.sh from terraform output. Do not edit by hand
 # and do not commit it — it holds secrets and the tenant hostname.
@@ -40,6 +47,7 @@ TXNDEMO_CALLER_CLIENT_SECRET=$TXNDEMO_CALLER_CLIENT_SECRET
 TXNDEMO_JOBSVC_SUBJECT_ID=0a97c003-0000-4000-8000-000000000002
 
 TXNDEMO_TRUST_DOMAIN=acme-internal
+TXNDEMO_INTERNAL_TOKEN=$INTERNAL_TOKEN
 TXNDEMO_PORTAL_SCOPE=$(printf '%s' "$OUT" | jq -r '.subject_scopes.value.human')
 TXNDEMO_EXCHANGE_SCOPE=client:activity:write
 

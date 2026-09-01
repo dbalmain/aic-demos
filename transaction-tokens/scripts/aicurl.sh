@@ -9,12 +9,12 @@
 # must be unlocked (`aic login`) — --no-prompt makes a locked agent fail fast
 # rather than block on a password an automated caller cannot supply.
 #
-# `aic` resolves its tenant from `.aic/config.toml` in the *current directory*
-# and has no --project flag or env override, so every `aic` call below runs from
-# $AIC_PROJECT_DIR (default: the sibling pingone-aic-manager checkout). Set it
-# in a gitignored .env if your checkout lives elsewhere. The tenant hostname is
-# customer-identifying and must not land in this repo, which is the other reason
-# the config stays over there.
+# `aic` resolves its tenant from `.aic/config.toml`, in the current directory
+# by default but from $AIC_PROJECT when that is set. This script sets it
+# (default: the sibling pingone-aic-manager checkout); override it, or
+# AIC_PROJECT_DIR in a gitignored .env, if your checkout lives elsewhere. The
+# tenant hostname is customer-identifying and must not land in this repo,
+# which is the other reason the config stays over there.
 #
 # Response body is left in $AICURL_BODY (default /tmp/aicurl.body) and the HTTP
 # status is printed to stderr, so a caller can jq the body without parsing.
@@ -37,20 +37,20 @@ done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$HERE/../.env" ] && . "$HERE/../.env"
-AIC_PROJECT_DIR="${AIC_PROJECT_DIR:-$HERE/../../../pingone-aic-manager}"
-if [ ! -f "$AIC_PROJECT_DIR/.aic/config.toml" ]; then
-  echo "error: no .aic/config.toml under AIC_PROJECT_DIR ($AIC_PROJECT_DIR)." >&2
-  echo "  aic reads its tenant from the cwd; point AIC_PROJECT_DIR at a checkout that has one." >&2
+: "${AIC_PROJECT:=${AIC_PROJECT_DIR:-$HERE/../../../pingone-aic-manager}}"
+if [ ! -f "$AIC_PROJECT/.aic/config.toml" ]; then
+  echo "error: no .aic/config.toml under AIC_PROJECT ($AIC_PROJECT)." >&2
+  echo "  Point AIC_PROJECT at a pingone-aic-manager checkout that has one." >&2
   exit 2
 fi
+export AIC_PROJECT
 
 if [ -z "${TENANT_BASE_URL:-}" ]; then
-  TENANT_BASE_URL=$(cd "$AIC_PROJECT_DIR" && aic --no-prompt ctx list 2>/dev/null \
-    | awk '$1=="*" {print $NF}')
+  TENANT_BASE_URL=$(aic --no-prompt ctx list 2>/dev/null | awk '$1=="*" {print $NF}')
 fi
 [ -n "${TENANT_BASE_URL:-}" ] || { echo "error: no tenant base URL; check 'aic ctx current'" >&2; exit 2; }
 
-if ! TOKEN=$(cd "$AIC_PROJECT_DIR" && aic --no-prompt whoami --token 2>/dev/null) || [ -z "$TOKEN" ]; then
+if ! TOKEN=$(aic --no-prompt whoami --token 2>/dev/null) || [ -z "$TOKEN" ]; then
   echo "error: no token from the agent — run 'aic login'" >&2; exit 3
 fi
 
