@@ -75,6 +75,20 @@ function checkedString(v, name, re) {
   return v;
 }
 
+// The regex only proves the SHAPE. "2026-02-31" and "2026-99-99" both match
+// it and neither is a day. Round-tripping through Date is the cheap way to
+// reject them in ES5: an impossible day rolls over to a different one.
+function checkedDate(v) {
+  checkedString(v, "delivered_on", DELIVERED_ON_RE);
+  var parts = v.split("-");
+  var y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
+  var probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) {
+    reject("delivered_on is not a real date");
+  }
+  return v;
+}
+
 function checkedCost(v) {
   if (typeof v !== "number" || v !== Math.floor(v) || isNaN(v)) {
     reject("cost_cents must be a whole number");
@@ -88,19 +102,35 @@ function checkedCost(v) {
 // job's own service token never does (terraform/policy.tf). This is the ONE
 // gate whose answer narrows rather than rejects — a refusal is a legitimate
 // policy answer, not a malformed request.
+//
+// "DENIED" and "could not ask" are different answers and must not collapse
+// into each other. Both withhold the cost, so both are fail-closed on
+// authority — but only the first is a policy DECISION. Returning false for an
+// evaluation error meant that renaming the policy set produced a token with
+// no cost, the job printing "refused by the issuance policy, as expected",
+// and the demo's headline proof passing without any policy having run.
+// An error now fails the mint, loudly.
 function mayAssertCost(subjectToken) {
-  if (!subjectToken) { return false; }
-  try {
-    var decisions = policy.evaluate({ jwt: subjectToken }, ISSUANCE_POLICY_SET, ["tctx/cost_cents"], {});
-    for (var i = 0; i < decisions.length; i++) {
-      var d = decisions[i];
-      if (d && d.actions && d.actions.assert === true) { return true; }
-    }
-    return false;
-  } catch (e) {
-    logger.error("TxnDemo/tokenmod issuance policy evaluation failed: " + e);
-    return false; // fail closed
+  if (!subjectToken) {
+    // No subject token at all is a malformed exchange, not a policy answer.
+    reject("no subject_token to evaluate the issuance policy against");
   }
+  var decisions;
+  try {
+    decisions = policy.evaluate({ jwt: subjectToken }, ISSUANCE_POLICY_SET, ["tctx/cost_cents"], {});
+  } catch (e) {
+    logger.error("TxnDemo/tokenmod issuance policy evaluation FAILED (not a refusal): " + e);
+    throw new Error("issuance policy could not be evaluated");
+  }
+  if (!decisions || !decisions.length) {
+    logger.error("TxnDemo/tokenmod issuance policy returned no decision for tctx/cost_cents");
+    throw new Error("issuance policy returned no decision");
+  }
+  for (var i = 0; i < decisions.length; i++) {
+    var d = decisions[i];
+    if (d && d.actions && d.actions.assert === true) { return true; }
+  }
+  return false; // a real, explicit denial
 }
 
 // Resolves the named client against the subject's OWN relationship, so a
@@ -130,34 +160,49 @@ function resolveClient(clients, wantedRef) {
   var context = parseJson(firstParam(params, "request_context"), "request_context");
   var subjectToken = firstParam(params, "subject_token");
 
+  // Two ways this fails and BOTH have to reject. An exception is the obvious
+  // one; a subject whose record no longer exists comes back as a plain null
+  // (docs/api/10-managed-objects.md), which used to fall through to "this
+  // subject manages nobody" and still mint a cost-bearing token for an
+  // identity that had been deleted.
   var user = null;
   try {
     user = openidm.read("managed/bravo_user/" + sub, null, ["userName", "custom_txnClients/*"]);
   } catch (e) {
-    // An IDM failure must not silently downgrade to "this subject manages
-    // nobody" — that is the fail-open shape this script had before.
     logger.error("TxnDemo/tokenmod IDM read failed for " + sub + ": " + e);
     throw new Error("could not resolve the subject's identity");
+  }
+  if (!user) {
+    logger.error("TxnDemo/tokenmod no managed/bravo_user record for " + sub);
+    throw new Error("the subject has no identity record");
   }
 
   accessToken.setField("aud", "acme-internal");
   accessToken.setField("txn", String(accessToken.getAuditTrackingId()));
-  accessToken.setField("sub", (user && user.userName) ? String(user.userName) : sub);
+  accessToken.setField("sub", user.userName ? String(user.userName) : sub);
   accessToken.setField("req_wl", actingClientId);
 
+  // Both required: a transaction context with neither a type nor a date is
+  // not a transaction, and the ledger has columns for both. Leaving them
+  // optional meant request_details:{} minted a signed, valid, empty tctx
+  // that every hop accepted and the ledger recorded with NULLs.
   var tctx = {};
-  if (details.activity_type !== undefined && details.activity_type !== null) {
-    tctx.activity_type = checkedString(details.activity_type, "activity_type", ACTIVITY_TYPE_RE);
+  if (details.activity_type === undefined || details.activity_type === null) {
+    reject("activity_type is required");
+  }
+  tctx.activity_type = checkedString(details.activity_type, "activity_type", ACTIVITY_TYPE_RE);
+  if (details.delivered_on === undefined || details.delivered_on === null) {
+    reject("delivered_on is required");
   }
   if (details.delivered_on !== undefined && details.delivered_on !== null) {
-    tctx.delivered_on = checkedString(details.delivered_on, "delivered_on", DELIVERED_ON_RE);
+    tctx.delivered_on = checkedDate(details.delivered_on);
   }
 
   var wantedRef = null;
   if (details.client_ref !== undefined && details.client_ref !== null) {
     wantedRef = checkedString(details.client_ref, "client_ref", CLIENT_REF_RE);
   }
-  var client = resolveClient(user ? user.custom_txnClients : null, wantedRef);
+  var client = resolveClient(user.custom_txnClients, wantedRef);
   if (client) {
     tctx.client_ref = String(client._refResourceId);
     tctx.client_display = String(client.displayName || "");
