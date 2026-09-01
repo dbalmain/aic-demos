@@ -360,7 +360,7 @@
 <header class="masthead">
   <div class="eyebrow">
     <span>aic-demos / transaction-tokens</span>
-    <span class="pill">Agreed · not built</span>
+    <span class="pill">Built · running</span>
   </div>
   <h1>The token that outlives no hop</h1>
   <p class="standfirst">
@@ -368,8 +368,9 @@
     with <strong>AIC as the Transaction Token Service</strong>. The manager's access token
     stops at the edge; a 60-second Txn-Token carries the authorized intent of one transaction
     across three services, and reaches the last one byte for byte identical to how it left
-    the first. Four things about the wire format the product cannot match — all of them
-    labels, none of them mechanism.
+    the first. Four things about the wire format the product cannot match, all of them
+    labels — and a longer, more honest list of places where what is enforced here is
+    narrower than what the draft describes.
   </p>
 </header>
 
@@ -387,6 +388,8 @@
       <tr><td>Crypto</td><td><code>jose</code>, RS256 — verification only; AIC signs</td></tr>
       <tr><td>Realm</td><td><code>bravo</code>, alongside <code>capability-tokens</code></td></tr>
       <tr><td>Services</td><td>Fastify</td></tr>
+      <tr><td>Account manager <code>sub</code></td><td>human-readable, e.g. <code>am-alice</code> — not AIC's raw UUID</td></tr>
+      <tr><td>Nightly job</td><td>asks for a cost-bearing entry, is refused by the issuance policy because its subject token carries no account-manager scope, and records the cost-free entry it got back — <strong>the refusal is the demo</strong></td></tr>
     </tbody>
   </table>
   </div>
@@ -453,11 +456,11 @@
 
       <rect class="svg-box" x="720" y="275" width="165" height="50" rx="3"/>
       <text class="t-name" x="736" y="297">Nightly job</text>
-      <text class="t-sub"  x="736" y="313">no user token</text>
+      <text class="t-sub"  x="736" y="313">jwt-bearer · no human</text>
 
       <rect class="svg-box-hi" x="505" y="395" width="380" height="56" rx="3"/>
       <text class="t-name" x="524" y="419">Activity API</text>
-      <text class="t-sub"  x="524" y="435">validates · holds the manager↔client table</text>
+      <text class="t-sub"  x="524" y="435">validates independently · forwards untouched</text>
 
       <rect class="svg-box-hi" x="505" y="495" width="380" height="56" rx="3"/>
       <text class="t-name" x="524" y="519">Ledger service</text>
@@ -499,9 +502,10 @@
       <path class="e-thin" d="M 300 325 L 300 380" marker-end="url(#ah-thin)"/>
       <text class="t-edge" x="306" y="352">6 · may assert?</text>
 
-      <!-- 5 the callback into the app -->
-      <path class="e-dash" d="M 395 312 L 462 312 L 462 423 L 505 423" marker-end="url(#ah-thin)"/>
-      <text class="t-edge" x="398" y="330">5 · whose client?</text>
+      <!-- 5 the relationship read — in-process, inside AIC. There is no
+           callback into the trust domain; an earlier revision drew one. -->
+      <path class="e-thin" d="M 230 325 L 230 380" marker-end="url(#ah-thin)"/>
+      <text class="t-edge" x="150" y="352">5 · whose client? (IDM, in-process)</text>
 
       <!-- 8 down -->
       <path class="e-bold" d="M 560 225 L 560 395" marker-end="url(#ah-bold)"/>
@@ -519,7 +523,7 @@
   <div class="legend">
     <span><i class="swatch bold"></i>carries the Txn-Token</span>
     <span><i class="swatch thin"></i>other calls</span>
-    <span><i class="swatch dash"></i>refused by policy, falls back</span>
+    <span><i class="swatch thin"></i>inside AIC: no call leaves the tenant</span>
   </div>
   </div>
 </section>
@@ -532,12 +536,12 @@
     <li><span class="n">2</span><p class="what"><span class="who">manager → BFF</span>Posts the activity: client, type, cost, date delivered, and a free-text note.</p></li>
     <li><span class="n">3</span><p class="what"><span class="who">BFF → AIC</span>RFC 8693 exchange. <code>request_details</code> <em>proposes</em> the type, cost and date; the BFF is the only workload that ever sees the access token.</p></li>
     <li><span class="n">4</span><p class="what"><span class="who">validate-scope → policy</span>Is the requested internal scope within what the subject token actually carries? If the subject scope cannot be determined, refuse — never treat unknown as unconstrained.</p></li>
-    <li><span class="n">5</span><p class="what"><span class="who">token-mod → IDM</span>Which client is this manager's, and what tier are they? Read in-process via the <code>openidm</code> binding — no outbound call, no tunnel.</p></li>
-    <li><span class="n">6</span><p class="what"><span class="who">token-mod → policy</span>May <em>this workload</em> assert these <code>tctx</code> fields? The BFF may assert a cost; the nightly job may not. Then the script writes <code>tctx</code> — including two claims nobody requested.</p></li>
+    <li><span class="n">5</span><p class="what"><span class="who">token-mod → IDM</span>Which client is this manager's, and what tier are they? Read in-process via the <code>openidm</code> binding — no outbound call, no tunnel. A <code>client_ref</code> the caller named that is <em>not</em> one of theirs fails the mint outright.</p></li>
+    <li><span class="n">6</span><p class="what"><span class="who">token-mod → policy</span>May <em>this subject</em> assert a cost? An account manager's subject token carries <code>portal.activities</code> and may; the nightly job's carries <code>job.accrual</code> and may not. Then the script writes <code>tctx</code> — including two claims nobody requested.</p></li>
     <li><span class="n">7</span><p class="what"><span class="who">AIC → BFF</span>A signed JWT, 60 seconds, <code>aud</code> set to the trust domain rather than a client id.</p></li>
-    <li><span class="n">8</span><p class="what"><span class="who">BFF → Activity API</span>Workload identity in <code>Authorization</code>; the Txn-Token in its own <code>Txn-Token</code> header. Signature, audience and expiry checked before anything else happens.</p></li>
-    <li><span class="n">9</span><p class="what"><span class="who">Activity API → Ledger</span>The same header, forwarded untouched. The ledger validates independently and reads cost and type from <code>tctx</code> — never from the body.</p></li>
-    <li class="quiet"><span class="n">—</span><p class="what"><span class="who">nightly job → AIC</span>The internally-initiated flow: no user token anywhere. It tries to assert a cost, the issuance policy refuses it because it isn't the BFF, and it falls back to a cost-free entry &mdash; the refusal is the demonstration.</p></li>
+    <li><span class="n">8</span><p class="what"><span class="who">BFF → Activity API</span>Workload identity in <code>Authorization</code>; the Txn-Token in its own <code>Txn-Token</code> header. The calling workload is authenticated <em>first</em>; then signature, issuer, audience, expiry, the required claims and the operation scope — before anything else happens.</p></li>
+    <li><span class="n">9</span><p class="what"><span class="who">Activity API → Ledger</span>The same Txn-Token header, forwarded untouched, alongside the Activity API's <em>own</em> workload credential rather than a replay of the portal's. The ledger validates independently and reads cost and type from <code>tctx</code> — never from the body.</p></li>
+    <li class="quiet"><span class="n">—</span><p class="what"><span class="who">nightly job → AIC</span>The internally-initiated flow: no human, though there is still an AIC user record and an AIC-issued subject token behind it. It asks for a cost in the same exchange everyone else uses; the issuance policy declines, so the token it gets back simply has no <code>cost_cents</code> in it. One call, not two — nothing is retried. It records the cost-free entry, and the refusal is the demonstration.</p></li>
   </ol>
 </section>
 
@@ -583,9 +587,11 @@
       anywhere in AIC.
     </p>
     <p>
-      All four are <strong>labels</strong>. Narrowing, enrichment, propagation, per-hop
-      validation and the issuance policy are all intact — which is what makes AIC-as-TTS a
-      trade rather than a fudge.
+      These four are <strong>labels</strong>, and the mechanisms they name — narrowing,
+      enrichment, propagation, per-hop validation, the issuance policy — are all intact,
+      which is what makes AIC-as-TTS a trade rather than a fudge. They are not the whole
+      list of departures, though; the honest one is at the foot of this page and is
+      longer.
     </p>
   </div>
 
@@ -617,8 +623,13 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
     prefixed <code>custom_</code> — not the realm prefix, not any other name — and comes
     back unindexed. And a relationship expansion via the <code>openidm</code> binding can
     read back <strong>empty</strong> for several seconds after a schema write, even though
-    REST is correct the whole time — the script should fail closed on an empty expansion,
-    not read it as "no relationship exists." A policy-condition script has
+    REST is correct the whole time — so a <code>client_ref</code> the caller <em>named</em>
+    that does not resolve fails the mint, rather than being dropped while the token is
+    minted anyway. (It was dropped, until an adversarial review found that a bogus
+    <code>client_ref</code> plus a cost produced a costed token with no client on it.)
+    A third: AIC does not synthesise the reverse side of a relationship — it has to be
+    written onto the target object's own schema as a real second property. A
+    policy-condition script has
     <strong>no <code>openidm</code> binding</strong> at all — probed the same day — so this
     trick is specific to the token-modification context.
   </p>
@@ -628,7 +639,7 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
   <p class="kicker">The artefact</p>
   <h2>What actually travels</h2>
   <p>
-    Amber marks the two claims the TTS added on its own authority. The free-text note is
+    Amber marks the claims the TTS added on its own authority. The free-text note is
     <em>not</em> here — it rides in the request body, where it cannot be mistaken for
     something integrity-critical.
   </p>
@@ -641,16 +652,16 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
   <span class="k">"sub"</span>:    <span class="s">"am-alice"</span>,
   <span class="k">"iat"</span>:    1787923140,
   <span class="k">"exp"</span>:    1787923200,                      <span class="c">// 60 seconds</span>
-  <span class="k">"scope"</span>:  <span class="s">"client:activity:write"</span>,         <span class="c">// internal intent, NOT the portal scope</span>
-  <span class="k">"req_wl"</span>: <span class="s">"portal-bff"</span>,
+  <span class="k">"scope"</span>:  [<span class="s">"client:activity:write"</span>],       <span class="c">// internal intent, NOT the portal scope</span>
+  <span class="k">"req_wl"</span>: <span class="s">"TxnDemo_caller"</span>,                <span class="c">// the shared exchange client — see Departures</span>
 
   <span class="k">"tctx"</span>: {                                <span class="c">// the TTS is authoritative here</span>
-    <span class="k">"client_ref"</span>:     <span class="s">"client-4471"</span>,
-    <span class="k">"activity_type"</span>:  <span class="s">"advisory"</span>,
-    <span class="k">"cost_cents"</span>:     45000,
-    <span class="k">"delivered_on"</span>:   <span class="s">"2026-08-21"</span>,
-    <span class="hi">"client_tier"</span>:     <span class="hi">"gold"</span>,              <span class="c">// enriched from IDM, not requested</span>
-    <span class="hi">"needs_approval"</span>:  <span class="hi">true</span>                <span class="c">// enriched: cost &gt; tier threshold</span>
+    <span class="hi">"client_ref"</span>:     <span class="hi">"client-4471"</span>,       <span class="c">// vouched: the subject's own relationship</span>
+    <span class="hi">"client_display"</span>: <span class="hi">"Acme Holdings"</span>,     <span class="c">// vouched: enriched from IDM</span>
+    <span class="hi">"client_tier"</span>:    <span class="hi">"gold"</span>,              <span class="c">// vouched: enriched from IDM</span>
+    <span class="k">"activity_type"</span>:  <span class="s">"advisory"</span>,           <span class="c">// the caller's word, shape-checked</span>
+    <span class="k">"delivered_on"</span>:   <span class="s">"2026-08-21"</span>,         <span class="c">// the caller's word, shape-checked</span>
+    <span class="hi">"cost_cents"</span>:     <span class="hi">45000</span>               <span class="c">// vouched: the issuance policy allowed it</span>
   },
 
   <span class="k">"rctx"</span>: {
@@ -661,37 +672,101 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
 }</pre>
   </div>
   </div>
+  <h3>Two kinds of <code>tctx</code> field</h3>
+  <p>
+    Everything in <code>tctx</code> is bound to this one transaction under AIC's
+    signature, so no hop can alter it. That is not the same as AIC having
+    <em>checked</em> it, and conflating the two is how a pattern like this gets oversold.
+    <strong>Vouched:</strong> the client fields come from IDM via the subject's own
+    relationship, and <code>cost_cents</code> is there only because the issuance policy
+    said so. <strong>Bound, not vouched:</strong> the activity type, the date and
+    everything in <code>rctx</code> are the caller's own words — AIC validates their
+    <em>shape</em>, rejects the request outright if it is wrong, and then binds them. It
+    does not claim they are true.
+  </p>
 </section>
 
 <section>
   <p class="kicker">Observability</p>
   <h2>The part that makes it a demo</h2>
   <p>
-    Every hop logs the <code>txn</code> value, which workload it is, what it validated and
-    what it decided — plus a <strong>hash</strong> of the token, never the token. A
-    <code>/trace/:txn</code> view then renders the decoded payload at each hop side by side,
-    so it is visually obvious that the same token traversed the chain unchanged. That
-    side-by-side is the screenshot this POC exists to produce.
+    Every hop records the <code>txn</code> value, which workload called it, what it
+    validated and what it decided — plus a truncated SHA-256 <strong>hash</strong> of the
+    token, never the token. <code>GET /trail/:txn</code> on the BFF then renders the
+    decoded payload at each hop side by side, every column fetched from the service that
+    produced it rather than reconstructed centrally, so the identical hash down the row is
+    visible evidence that the same token traversed the chain unchanged. That side-by-side
+    is the screenshot this POC exists to produce.
+  </p>
+  <p>
+    Nothing in a trail is a usable credential: a hash correlates, and a decoded payload
+    carries no signature. The trails are in memory, capped, and each service's own
+    <code>/trail</code> still sits behind the workload credential.
   </p>
 </section>
 
 <section>
   <p class="kicker">Honesty</p>
   <h2>Where this knowingly departs from the draft</h2>
+  <p>
+    This list used to have seven items and to call the first four "all of them labels".
+    An adversarial review on 2026-09-01 found that materially incomplete: several of the
+    differences below are reductions in what is actually <em>enforced</em>, not naming.
+    Saying otherwise was the worst inaccuracy on this page.
+  </p>
+
+  <h3>Product limits, measured</h3>
   <ul class="plain">
-    <li><strong>Four wire labels</strong> — <code>requested_token_type</code>, <code>issued_token_type</code>, <code>token_type</code> and the <code>typ</code> header. Product limits, measured, listed above.</li>
+    <li><strong>Four wire labels</strong> — <code>requested_token_type</code>, <code>issued_token_type</code>, <code>token_type</code> and the <code>typ</code> header, listed above. We do send <code>requested_token_type</code> and <code>audience</code>, which the draft requires and AM accepts; AM simply answers the first with the access-token URN.</li>
+  </ul>
+
+  <h3>Deliberate reductions</h3>
+  <ul class="plain">
     <li><strong>No mTLS on the BFF→AIC exchange.</strong> The draft requires mutual authentication there, because the access token is in flight on that hop. We use <code>client_secret_basic</code> and say so.</li>
-    <li><strong>No workload identity.</strong> <code>Authorization</code> on internal hops is a stub bearer, not SPIFFE.</li>
+    <li><strong>Workload identity on internal hops is a shared secret</strong>, not SPIFFE or mTLS. It <em>is</em> a separate credential in <code>Authorization</code>, checked before the Txn-Token, so the draft&rsquo;s "two headers, two subjects" property holds — but every service presents the same one, so a hop knows an internal caller reached it, not <em>which</em> one.</li>
     <li><strong>One trust domain.</strong> No cross-domain chaining.</li>
-    <li><strong>Signing keys are the realm's</strong>, not TTS-specific — arguably better than the draft's static-dev-keys concession, but not what it describes.</li>
-    <li><strong>Enrichment data lives inside AIC itself</strong> (a managed object), not the app's own database. The draft is silent on where a TTS gets it; keeping it in AIC means setup is a <code>terraform apply</code>, no tunnel.</li>
-    <li><strong>The nightly job's <code>self_signed</code> subject_token has no AIC-native equivalent.</strong> AM has no self-signed token type for token exchange; the job uses AIC's Trusted JWT Issuer / jwt-bearer feature instead — a pre-registered issuer and key, not a token minted ad hoc by the job. It runs as an invokable script, not a real scheduler.</li>
+    <li><strong>Signing keys are the realm&rsquo;s</strong>, not TTS-specific — arguably better than the draft&rsquo;s static-dev-keys concession, but not what it describes.</li>
+    <li><strong>Enrichment data lives inside AIC itself</strong> (a managed object), not the app&rsquo;s own database. The draft is silent on where a TTS gets it; keeping it in AIC means setup is a <code>terraform apply</code>, no tunnel.</li>
+    <li><strong>The account manager signs in with the password grant.</strong> A real BFF uses <code>authorization_code</code>; nothing else in the pattern moves.</li>
+  </ul>
+
+  <h3>Where the authority is genuinely weaker than the draft&rsquo;s model</h3>
+  <ul class="plain">
+    <li>
+      <strong><code>req_wl</code> does not identify the requesting workload.</strong>
+      The draft defines it as the workload asking for the token, and expects the TTS to
+      authorise <em>that workload</em>. Here the portal and the nightly job both
+      authenticate the exchange as the single <code>TxnDemo_caller</code> client, so
+      <code>req_wl</code> is <code>TxnDemo_caller</code> in every token and the issuance
+      policy keys on the <strong>subject token&rsquo;s scope</strong> instead.
+      That is a design choice, not an oversight — one internal exchange identity, with the
+      subject token carrying who originated the request. It means this demo proves
+      <em>subject-dependent claim filtering</em>, which is real and is what the refusal
+      shows, and does not prove per-workload issuance control.
+    </li>
+    <li>
+      <strong>The internally-initiated flow still mints an AIC user token first.</strong>
+      The draft&rsquo;s version has the job present a <code>self_signed</code> subject token
+      with no user behind it. AM has no such token type, so the job signs an RFC 7523
+      assertion which AIC exchanges for an ordinary access token belonging to a seeded
+      user record — and <em>that</em> is the subject token. No human, but not "no user
+      token anywhere", which is what this page used to claim. The signing key is the
+      install&rsquo;s per-tenant key, shared with any other jwt-bearer use of the tenant.
+    </li>
+    <li>
+      <strong>Replay is bounded by lifetime and idempotent storage</strong>, not by
+      single-use enforcement: a replayed token is refused with a 409 because the
+      ledger&rsquo;s primary key is <code>txn</code>, not because any hop tracks spent
+      tokens. The draft leaves strict single-use optional. The 60-second lifetime was
+      chosen, not measured.
+    </li>
   </ul>
   <p style="color:var(--slate);font-size:0.94rem">This list grows as we hit things; it is a deliverable, not an appendix.</p>
 </section>
 
 <footer>
-  Decisions settled 2026-08-28. The brief lives at
+  Decisions settled 2026-08-28; corrected against the implementation 2026-09-01.
+  The brief lives at
   <code>transaction-tokens/docs/brief.md</code>; this page is
   <code>transaction-tokens/ARCHITECTURE.md</code> made legible.
 </footer>
