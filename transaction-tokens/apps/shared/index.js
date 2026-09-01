@@ -8,3 +8,4 @@ export {
   userinfo,
 } from "./aic.js";
 export { workloadHeaders, requireWorkload } from "./workload.js";
+export { note, trailFor, tokenHash, registerTrailRoute } from "./trail.js";

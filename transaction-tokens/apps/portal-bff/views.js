@@ -32,6 +32,13 @@ pre { background: #8881; padding: .7rem .8rem; border-radius: 4px; overflow-x: a
 .absent { color: var(--no); font-weight: 600; }
 .meta { color: var(--dim); font-size: .85rem; }
 a { color: inherit; }
+.hops { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.hop { border: 1px solid var(--line); border-radius: 6px; padding: .7rem .8rem; }
+.hop h3 { margin: 0 0 .3rem; font-size: .9rem; }
+.hop ul { margin: .35rem 0 .5rem; padding-left: 1.1rem; font-size: .78rem; color: var(--dim); }
+.hash { font-family: ui-monospace, monospace; font-size: .72rem; word-break: break-all; }
+.same { border: 1px solid var(--ok); border-left-width: 4px; padding: .55rem .8rem; border-radius: 4px;
+        font-size: .85rem; margin: 0 0 1rem; }
 `;
 
 export function page(title, body) {
@@ -71,8 +78,40 @@ function trailCard(result) {
   <h2>Last activity</h2>
   <p>${costLine}${result.ledger?.replay ? " <span class=\"meta\">(replay of an existing txn)</span>" : ""}</p>
   <pre>${json(t)}</pre>
-  <p class="meta">Recorded by the ledger: <code>${esc(result.ledger?.entry?.txn ?? "—")}</code></p>
+  <p class="meta">Recorded by the ledger: <code>${esc(result.ledger?.entry?.txn ?? "—")}</code>
+  ${result.ledger?.entry?.txn ? `· <a href="/trail/${encodeURIComponent(result.ledger.entry.txn)}">see it at every hop</a>` : ""}</p>
 </div>`;
+}
+
+// The side-by-side view: one column per hop, the same decoded payload and
+// the same token hash down the row. Identical hashes are the evidence the
+// token was forwarded unchanged; no column ever shows the token itself.
+export function trailPage({ txn, unchanged, hops }) {
+  const cards = hops
+    .map(
+      (h) => `<div class="hop">
+  <h3>${esc(h.hop)}</h3>
+  <p class="meta">called by ${esc(h.workload)}</p>
+  <p class="hash">${esc(h.token_hash)}</p>
+  <ul>${h.validated.map((v) => `<li>${esc(v)}</li>`).join("")}</ul>
+  <p class="meta"><strong>decided:</strong> ${esc(h.decided)}</p>
+  <pre>${json(h.payload?.tctx ?? {})}</pre>
+</div>`,
+    )
+    .join("");
+  return page(
+    "Transaction trail",
+    `<p class="meta"><a href="/">&larr; back</a> · txn <code>${esc(txn)}</code></p>
+${
+  unchanged
+    ? `<p class="same">Every hop saw the same token hash — the Txn-Token was forwarded
+       unmodified from the moment AIC minted it. Nothing below is a complete token:
+       a hash for correlation, and the decoded <code>tctx</code> with the signature stripped.</p>`
+    : `<div class="warn">The hops did not all see the same token. That should not happen —
+       no hop is supposed to re-issue.</div>`
+}
+<div class="hops">${cards}</div>`,
+  );
 }
 
 export function dashboard({ user, result, error }) {

@@ -10,7 +10,14 @@
 // Txn-Token is passed through untouched, while this service presents its OWN
 // workload credential to the ledger rather than replaying the portal's.
 import Fastify from "fastify";
-import { config, txnTokenVerifier, workloadHeaders, requireWorkload } from "@txndemo/shared";
+import {
+  config,
+  txnTokenVerifier,
+  workloadHeaders,
+  requireWorkload,
+  note,
+  registerTrailRoute,
+} from "@txndemo/shared";
 
 const cfg = config();
 // Gate A can narrow a Txn-Token to an empty scope and still mint transaction
@@ -32,6 +39,23 @@ app.post("/activities", async (req, reply) => {
     return reply.code(401).send({ error: `Txn-Token rejected: ${e.message}` });
   }
 
+  note({
+    hop: "activity-api",
+    token: header,
+    payload,
+    workload: "portal-bff (shared internal credential)",
+    validated: [
+      "calling workload authenticated",
+      "RS256 signature against AIC's JWKS",
+      `iss is the ${cfg.realm} realm`,
+      `aud is the trust domain ${cfg.trustDomain}`,
+      "exp not passed",
+      "required claims present: exp iat sub txn req_wl tctx",
+      "scope carries client:activity:write",
+    ],
+    decided: "forward the same token, unmodified, to ledger-service",
+  });
+
   const res = await fetch(`${cfg.ledgerUrl}/entries`, {
     method: "POST",
     headers: { ...workloadHeaders(cfg), "txn-token": header },
@@ -41,6 +65,11 @@ app.post("/activities", async (req, reply) => {
 
   return { accepted: true, tctx: payload.tctx, ledger };
 });
+
+// What this hop saw, for the side-by-side view. Behind the workload
+// credential like everything else — a trail is not public just because it
+// holds no complete token.
+registerTrailRoute(app, (req, reply) => requireWorkload(cfg, req, reply));
 
 app.get("/healthz", async () => ({ ok: true }));
 

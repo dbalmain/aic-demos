@@ -7,7 +7,13 @@
 // This service is two hops from the sign-in and has never seen the account
 // manager's login token. Everything it knows, it knows from a signature.
 import Fastify from "fastify";
-import { config, txnTokenVerifier, requireWorkload } from "@txndemo/shared";
+import {
+  config,
+  txnTokenVerifier,
+  requireWorkload,
+  note,
+  registerTrailRoute,
+} from "@txndemo/shared";
 import { record, all } from "./store.js";
 
 const cfg = config();
@@ -34,6 +40,24 @@ app.post("/entries", async (req, reply) => {
   const payload = await requireTxnToken(req, reply);
   if (!payload) return;
   const inserted = record(payload);
+  note({
+    hop: "ledger-service",
+    token: req.headers["txn-token"],
+    payload,
+    workload: "activity-api (shared internal credential)",
+    validated: [
+      "calling workload authenticated",
+      "RS256 signature against AIC's JWKS",
+      `iss is the ${cfg.realm} realm`,
+      `aud is the trust domain ${cfg.trustDomain}`,
+      "exp not passed",
+      "required claims present: exp iat sub txn req_wl tctx",
+      "scope carries client:activity:write",
+    ],
+    decided: inserted
+      ? `recorded from tctx alone${payload.tctx?.cost_cents == null ? " (no cost asserted)" : ` (cost ${payload.tctx.cost_cents}c)`}`
+      : "refused as a replay of a txn already recorded",
+  });
   if (!inserted) {
     // The same txn arriving twice is a replay, not a second transaction.
     // 409 rather than 200, so a caller cannot read "recorded" into what is
@@ -55,6 +79,8 @@ app.get("/entries", async (req, reply) => {
   if (!requireWorkload(cfg, req, reply)) return;
   return { entries: all() };
 });
+
+registerTrailRoute(app, (req, reply) => requireWorkload(cfg, req, reply));
 
 app.get("/healthz", async () => ({ ok: true }));
 
