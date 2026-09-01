@@ -60,7 +60,15 @@ remove() { # $1 managed path, $2 label
   fi
 }
 
+# Said BEFORE anything is deleted, because a warning printed afterwards is a
+# postmortem. All three records below are addressed by FIXED ids, and both
+# seed.sh paths adopt a record they find rather than failing — the user PATCHes,
+# the client PUTs — so none of them can be told apart from one this demo
+# created.
 echo "Records"
+say "note: all three are addressed by FIXED ids and seed.sh adopts an existing"
+say "record rather than failing. If any predated this demo, it is about to be"
+say "deleted anyway — teardown cannot tell what it created from what it adopted."
 remove "bravo_txn_client/$CLIENT_ACME" "Acme Holdings"
 remove "bravo_user/$USER_ALICE"        "am-alice"
 remove "bravo_user/$USER_JOBSVC"       "svc-accrual-job"
@@ -106,9 +114,6 @@ if [ "$failed" -ne 0 ]; then
 fi
 
 echo "Local artefacts"
-say "note: the two identity records above are addressed by FIXED UUIDs, and"
-say "seed.sh adopts one it finds rather than failing. If either predated this"
-say "demo, teardown has just deleted something it did not create."
 for f in "$ROOT/apps/accrual-job/.keys/signing.jwk" "$ROOT/apps/.env" "$ROOT/apps/ledger-service/ledger.sqlite"; do
   if [ -e "$f" ]; then rm -f "$f"; say "removed ${f#"$ROOT"/}"; else say "${f#"$ROOT"/} (already gone)"; fi
 done

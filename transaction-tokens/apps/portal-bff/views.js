@@ -86,7 +86,7 @@ function trailCard(result) {
 // The side-by-side view: one column per hop, the same decoded payload and
 // the same token hash down the row. Identical hashes are the evidence the
 // token was forwarded unchanged; no column ever shows the token itself.
-export function trailPage({ txn, unchanged, complete, sources, hops }) {
+export function trailPage({ txn, unchanged, complete, sources, hops, flow }) {
   const cards = hops
     .map(
       (h) => `<div class="hop">
@@ -101,10 +101,12 @@ export function trailPage({ txn, unchanged, complete, sources, hops }) {
     .join("");
   return page(
     "Transaction trail",
-    `<p class="meta"><a href="/">&larr; back</a> · txn <code>${esc(txn)}</code></p>
+    `<p class="meta"><a href="/">&larr; back</a> · txn <code>${esc(txn)}</code>${
+      flow ? ` · started at: ${esc(flow)}` : ""
+    }</p>
 ${
   unchanged
-    ? `<p class="same">All three hops reported, and all three saw the same token hash — the
+    ? `<p class="same">Every hop in this chain reported, and all of them saw the same token hash — the
        Txn-Token was forwarded unmodified from the moment AIC minted it. Nothing below is a
        complete token: a hash for correlation, and the decoded <code>tctx</code> with the
        signature stripped.</p>`

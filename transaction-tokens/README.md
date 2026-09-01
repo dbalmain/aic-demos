@@ -165,10 +165,13 @@ signature, so nothing in the trail can be replayed.
 
 Two things the page is careful about, both of which it previously got wrong:
 
-- It only claims the token was unchanged when **all three** hops actually
+- It only claims the token was unchanged when **every hop in that chain**
   reported. Stop the two downstream services and it says "not every hop
   reported, so this proves nothing either way" — where it used to find one
-  surviving record, see one distinct hash, and announce agreement.
+  surviving record, see one distinct hash, and announce agreement. Which hops it
+  expects depends on where the transaction started, since the nightly job calls
+  `activity-api` directly and `portal-bff` is legitimately not in that chain;
+  the page names the flow it detected.
 - The "called by" line is labelled **claimed, unverified**, because the shared
   workload credential genuinely cannot identify a caller. It used to assert
   `portal-bff`, which was simply false on the nightly job's path — the job calls
@@ -187,7 +190,7 @@ the demo; 9–11 run it.
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | **An AIC tenant** you may write to, with a `bravo` realm       | The demo creates OAuth2 clients, scripts, policies and a managed-object type in it. Use a sandbox — **not** a tenant holding live customer config. | your Ping console   |
 | **A `pingone-aic-manager` checkout**, onboarded to that tenant | Everything here borrows its service-account credentials rather than holding its own. If `aic ctx list` shows your tenant with a `*`, you're set.   | `aic ctx list`      |
-| **Go** ≥ 1.22                                                  | to build the Terraform provider from source                                                                                                        | `go version`        |
+| **Go** ≥ 1.25                                                  | to build the Terraform provider from source                                                                                                        | `go version`        |
 | **Terraform** ≥ 1.6                                            | creates the AIC-side configuration                                                                                                                 | `terraform version` |
 | **Node** ≥ 22.13                                               | the four services. Verified on 24.19. `node:sqlite` needs 22.13+ without a flag.                                                                   | `node --version`    |
 | **bash, curl, jq, python3**                                    | the helper scripts                                                                                                                                 | `jq --version`      |
@@ -226,7 +229,7 @@ cp .env.example .env
 $EDITOR .env
 ```
 
-You need to provide six values; the comments in the file say the same:
+You need to provide seven values; the comments in the file say the same:
 
 - `AIC_PROJECT` — the **absolute** path to your `pingone-aic-manager` checkout.
 - `TXNDEMO_TENANT_URL` — your tenant's base URL. Get it from `aic ctx list`
@@ -439,14 +442,16 @@ scripts/teardown.sh --all    # the above, then terraform destroy
 ```
 
 Records come off before configuration, or the managed-object type outlives the
-rows that depend on it. `--all` needs the same environment step 3 set up, and
-teardown stops before destroying anything if a tenant step failed.
+rows that depend on it. `--all` needs the same environment step 3 set up. If a
+tenant step fails, teardown stops before touching your local key and `.env` and
+before any `terraform destroy` — though records it had already deleted stay
+deleted; it is not transactional.
 
 One thing to know before running it against a tenant that is not yours alone:
-the two identities are addressed by **fixed UUIDs**, and `seed.sh` adopts a
-record it finds at one of those ids rather than failing. If such a record
-predated the demo, teardown deletes it — it has no way to tell what it created
-from what it adopted. The script says so as it runs.
+all three records are addressed by **fixed ids**, and `seed.sh` adopts a record
+it finds at one of them rather than failing. If such a record predated the demo,
+teardown deletes it — it has no way to tell what it created from what it
+adopted. The script says so before it starts deleting.
 
 ### When something goes wrong
 

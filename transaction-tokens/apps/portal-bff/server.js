@@ -79,8 +79,15 @@ app.post("/activities", async (req, reply) => {
     // perfectly valid sixteen-cent cost that nobody asked for. Deciding a
     // value is malformed is AIC's job; re-interpreting it before AIC sees it
     // takes that decision away.
+    // Canonical decimal AND representable. The regex alone was not enough:
+    // four hundred nines match it, Number() gives Infinity, JSON.stringify
+    // writes `null`, and the mint reads that as "no cost asked for" — the
+    // same laundering as before, reached by magnitude instead of syntax.
+    // Anything that fails either test goes to AIC untouched, for AIC to
+    // reject.
     const raw = String(cost_cents).trim();
-    requestDetails.cost_cents = /^-?[0-9]+$/.test(raw) ? Number(raw) : raw;
+    const n = /^-?[0-9]+$/.test(raw) ? Number(raw) : NaN;
+    requestDetails.cost_cents = Number.isSafeInteger(n) ? n : raw;
   }
   const requestContext = { ip: req.ip, authn: "pwd", portal: "acme-portal" };
 
@@ -170,8 +177,19 @@ app.get("/trail/:txn", async (req, reply) => {
     remote("ledger-service", cfg.ledgerUrl),
   ]);
   const own = trailFor(txn);
+
+  // WHICH hops to expect depends on where the transaction started. The
+  // nightly job calls activity-api directly, so portal-bff legitimately has
+  // no record of it — and a fixed three-hop expectation reported that as an
+  // incomplete trail forever. Read the origin activity-api recorded (a
+  // claim, not a credential: it only selects what to require, and requiring
+  // MORE than actually happened is the direction that fails safe).
+  const originClaim = downstream.hops[0]?.workload ?? "";
+  const startedAtPortal = own.length > 0 || originClaim.startsWith("portal-bff");
   const sources = [
-    { name: "portal-bff", status: own.length ? "ok" : "no-record", hops: own },
+    ...(startedAtPortal
+      ? [{ name: "portal-bff", status: own.length ? "ok" : "no-record", hops: own }]
+      : []),
     downstream,
     ledger,
   ];
@@ -180,10 +198,11 @@ app.get("/trail/:txn", async (req, reply) => {
   const complete = sources.every((s) => s.status === "ok");
   const view = {
     txn,
+    flow: startedAtPortal ? "portal" : "nightly job (portal-bff not in this chain)",
     sources: sources.map(({ name, status, detail }) => ({ name, status, detail })),
     // Only a complete set of hops, all agreeing, is evidence. Anything else
     // is "we could not check", which the page now says instead.
-    unchanged: complete && new Set(hops.map((h) => h.token_hash)).size === 1,
+    unchanged: complete && hops.length > 0 && new Set(hops.map((h) => h.token_hash)).size === 1,
     complete,
     hops,
   };
