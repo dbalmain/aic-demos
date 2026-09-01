@@ -126,11 +126,22 @@ function mayAssertCost(subjectToken) {
     logger.error("TxnDemo/tokenmod issuance policy returned no decision for tctx/cost_cents");
     throw new Error("issuance policy returned no decision");
   }
+  // A row with an EMPTY actions map means "no policy applied"
+  // (docs/api/21-am-policies.md) — not a denial. Deleting the allow policy,
+  // or changing its resource so it no longer matches, produces exactly that,
+  // and reading it as a no meant the demo's refusal could be a
+  // misconfiguration wearing the right costume. The policy set carries an
+  // explicit deny for the service scope (terraform/policy.tf), so a genuine
+  // answer always has the key.
   for (var i = 0; i < decisions.length; i++) {
     var d = decisions[i];
-    if (d && d.actions && d.actions.assert === true) { return true; }
+    if (d && d.actions && typeof d.actions.assert === "boolean") {
+      return d.actions.assert === true;
+    }
   }
-  return false; // a real, explicit denial
+  logger.error("TxnDemo/tokenmod NO POLICY APPLIED to tctx/cost_cents — this is a " +
+    "broken issuance policy set, not a refusal");
+  throw new Error("no issuance policy applies to tctx/cost_cents");
 }
 
 // Resolves the named client against the subject's OWN relationship, so a

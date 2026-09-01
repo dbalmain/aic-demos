@@ -68,14 +68,19 @@ app.post("/activities", async (req, reply) => {
   const { client_ref, activity_type, delivered_on, cost_cents, note } = req.body;
   const requestDetails = { client_ref, activity_type, delivered_on };
   if (cost_cents !== undefined && cost_cents !== "") {
-    // Pass it through as the caller typed it, unless it is a finite number.
-    // Number("garbage") is NaN and Number("1e309") is Infinity; JSON.stringify
-    // turns both into `null`, which the mint script reads as "no cost asked
-    // for" — so malformed input came back looking exactly like a policy
-    // refusal. AIC is the thing that decides a cost is malformed; this hop's
-    // job is not to launder it into something else on the way.
-    const n = Number(cost_cents);
-    requestDetails.cost_cents = Number.isFinite(n) ? n : String(cost_cents);
+    // Convert ONLY a canonical decimal integer, and pass anything else on
+    // untouched for AIC to reject.
+    //
+    // Two ways this went wrong, both of them this hop quietly changing what
+    // the caller said. `Number("garbage")` is NaN and `Number("1e309")` is
+    // Infinity; JSON.stringify writes both as `null`, which the mint reads as
+    // "no cost asked for" — so malformed input came back looking exactly like
+    // a policy refusal. And `Number("0x10")` is 16: AIC then signs a
+    // perfectly valid sixteen-cent cost that nobody asked for. Deciding a
+    // value is malformed is AIC's job; re-interpreting it before AIC sees it
+    // takes that decision away.
+    const raw = String(cost_cents).trim();
+    requestDetails.cost_cents = /^-?[0-9]+$/.test(raw) ? Number(raw) : raw;
   }
   const requestContext = { ip: req.ip, authn: "pwd", portal: "acme-portal" };
 
@@ -105,7 +110,7 @@ app.post("/activities", async (req, reply) => {
 
     const res = await fetch(`${cfg.activityApiUrl}/activities`, {
       method: "POST",
-      headers: { ...workloadHeaders(cfg), "txn-token": txn.access_token, "content-type": "application/json" },
+      headers: { ...workloadHeaders(cfg, "portal-bff"), "txn-token": txn.access_token, "content-type": "application/json" },
       body: JSON.stringify({ note }), // the free-text note; never read by downstream tctx checks
     });
     result = await res.json();
@@ -132,24 +137,54 @@ app.get("/trail/:txn", async (req, reply) => {
   const session = sessionOf(req);
   if (!session) return reply.code(401).send({ error: "not signed in" });
   const { txn } = req.params;
-  const remote = async (base) => {
+
+  // An unreachable service, a non-200, unparseable JSON and a genuinely
+  // empty trail are four different things, and collapsing them into "no
+  // entries" turned the headline evidence into a lie: stop the two
+  // downstream services and the surviving portal record is the only hash, so
+  // the page said "every hop saw the same token hash" having observed one.
+  // Each hop is now reported with its own status, and the green verdict
+  // requires the COMPLETE expected set.
+  const remote = async (name, base) => {
+    let res;
     try {
-      const res = await fetch(`${base}/trail/${encodeURIComponent(txn)}`, {
-        headers: workloadHeaders(cfg),
+      res = await fetch(`${base}/trail/${encodeURIComponent(txn)}`, {
+        headers: workloadHeaders(cfg, "portal-bff"),
       });
-      return res.ok ? (await res.json()).hops : [];
-    } catch {
-      return [];
+    } catch (e) {
+      return { name, status: "unreachable", detail: e.message, hops: [] };
     }
+    if (!res.ok) return { name, status: "error", detail: `HTTP ${res.status}`, hops: [] };
+    let body;
+    try {
+      body = await res.json();
+    } catch (e) {
+      return { name, status: "error", detail: `unreadable trail: ${e.message}`, hops: [] };
+    }
+    const hops = Array.isArray(body.hops) ? body.hops : [];
+    return { name, status: hops.length ? "ok" : "no-record", hops };
   };
+
   const [downstream, ledger] = await Promise.all([
-    remote(cfg.activityApiUrl),
-    remote(cfg.ledgerUrl),
+    remote("activity-api", cfg.activityApiUrl),
+    remote("ledger-service", cfg.ledgerUrl),
   ]);
-  const hops = [...trailFor(txn), ...downstream, ...ledger];
+  const own = trailFor(txn);
+  const sources = [
+    { name: "portal-bff", status: own.length ? "ok" : "no-record", hops: own },
+    downstream,
+    ledger,
+  ];
+
+  const hops = sources.flatMap((s) => s.hops);
+  const complete = sources.every((s) => s.status === "ok");
   const view = {
     txn,
-    unchanged: hops.length > 0 && new Set(hops.map((h) => h.token_hash)).size === 1,
+    sources: sources.map(({ name, status, detail }) => ({ name, status, detail })),
+    // Only a complete set of hops, all agreeing, is evidence. Anything else
+    // is "we could not check", which the page now says instead.
+    unchanged: complete && new Set(hops.map((h) => h.token_hash)).size === 1,
+    complete,
     hops,
   };
   if (req.headers.accept?.includes("application/json")) return view;

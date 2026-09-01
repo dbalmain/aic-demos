@@ -24,12 +24,34 @@ ALL=0
 # rows still in place — the exact ordering problem this script's header says
 # it prevents. So probe first, and let a real failure stop the run.
 failed=0
-remove() { # $1 managed path, $2 label
-  local path=$1 label=$2
-  if ! quiet GET "$IDM/managed/$path"; then
-    say "$label (already gone)"
-    return 0
+
+# The PROBE has to distinguish its own failures too. `quiet GET` returning
+# non-zero covers 404 and 403 and 500 alike, so reading it as "not there"
+# reintroduced the exact defect the delete path was fixed for — one rung
+# further up. Keep the status.
+probe() { # $1 managed path -> prints "present" | "absent" | "error:<status>"
+  local path=$1 err status
+  err=$(mktemp)
+  if AICURL_BODY=/dev/null aic_call GET "$IDM/managed/$path" >/dev/null 2>"$err"; then
+    rm -f "$err"; printf 'present'; return
   fi
+  status=$(sed -n 's/.*-> HTTP \([0-9]*\).*/\1/p' "$err" | tail -1)
+  rm -f "$err"
+  case "$status" in
+    404) printf 'absent' ;;
+    "")  printf 'error:no-response' ;;
+    *)   printf 'error:%s' "$status" ;;
+  esac
+}
+
+remove() { # $1 managed path, $2 label
+  local path=$1 label=$2 state
+  state=$(probe "$path")
+  case "$state" in
+    absent)  say "$label (already gone)"; return 0 ;;
+    error:*) echo "  ERROR: could not determine whether $label exists (${state#error:})" >&2
+             failed=1; return 0 ;;
+  esac
   if quiet DELETE "$IDM/managed/$path"; then
     say "$label removed"
   else
@@ -54,8 +76,15 @@ echo "Trusted JWT Issuer"
 # last subject from an issuer whose key stays published would hand anyone
 # holding that key the ability to mint for any user — a teardown that ends
 # with the tenant less safe than it started. Refuse, and say why.
-subjects=$(aic --no-prompt jwt-bearer subjects list --realm "$REALM" 2>/dev/null || true)
-if ! printf '%s\n' "$subjects" | grep -qx "$USER_JOBSVC"; then
+# `|| true` here turned any failure into an empty list, which then read as
+# "the subject is already gone" — the same collapse again, and this one had
+# the extra property of skipping the last-subject guard below.
+if ! subjects=$(aic --no-prompt jwt-bearer subjects list --realm "$REALM" 2>&1); then
+  echo "  ERROR: could not read the issuer's allowedSubjects:" >&2
+  printf '%s\n' "$subjects" | sed 's/^/    /' >&2
+  failed=1
+  subjects=""
+elif ! printf '%s\n' "$subjects" | grep -qx "$USER_JOBSVC"; then
   say "svc-accrual-job was not an allowed subject (already gone)"
 elif [ "$(printf '%s\n' "$subjects" | grep -c .)" -le 1 ]; then
   say "svc-accrual-job is the issuer's ONLY allowed subject — leaving it."
@@ -68,21 +97,21 @@ else
   failed=1
 fi
 
-# These are removed unconditionally. If you pointed this demo at fixtures that
-# already existed — the two user UUIDs are fixed, and seed.sh adopts a record
-# it finds rather than failing — then teardown is deleting something it did
-# not create. Say so rather than discovering it afterwards.
+if [ "$failed" -ne 0 ]; then
+  echo >&2
+  echo "A tenant step did not complete — see the errors above. Stopping before" >&2
+  echo "removing local artefacts or running any destroy: the local key and env" >&2
+  echo "are what you need to retry." >&2
+  exit 1
+fi
+
 echo "Local artefacts"
+say "note: the two identity records above are addressed by FIXED UUIDs, and"
+say "seed.sh adopts one it finds rather than failing. If either predated this"
+say "demo, teardown has just deleted something it did not create."
 for f in "$ROOT/apps/accrual-job/.keys/signing.jwk" "$ROOT/apps/.env" "$ROOT/apps/ledger-service/ledger.sqlite"; do
   if [ -e "$f" ]; then rm -f "$f"; say "removed ${f#"$ROOT"/}"; else say "${f#"$ROOT"/} (already gone)"; fi
 done
-
-if [ "$failed" -ne 0 ]; then
-  echo >&2
-  echo "Something could not be removed — see the errors above. Stopping before" >&2
-  echo "any terraform destroy: the managed-object type must outlive its rows." >&2
-  exit 1
-fi
 
 if [ "$ALL" -eq 1 ]; then
   echo "Tenant config"

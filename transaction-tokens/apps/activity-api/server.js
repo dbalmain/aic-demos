@@ -15,6 +15,7 @@ import {
   txnTokenVerifier,
   workloadHeaders,
   requireWorkload,
+  claimedOrigin,
   note,
   registerTrailRoute,
 } from "@txndemo/shared";
@@ -43,7 +44,7 @@ app.post("/activities", async (req, reply) => {
     hop: "activity-api",
     token: header,
     payload,
-    workload: "portal-bff (shared internal credential)",
+    workload: claimedOrigin(req),
     validated: [
       "calling workload authenticated",
       "RS256 signature against AIC's JWKS",
@@ -58,7 +59,7 @@ app.post("/activities", async (req, reply) => {
 
   const res = await fetch(`${cfg.ledgerUrl}/entries`, {
     method: "POST",
-    headers: { ...workloadHeaders(cfg), "txn-token": header },
+    headers: { ...workloadHeaders(cfg, "activity-api"), "txn-token": header },
   });
   const ledger = await res.json().catch(() => ({}));
   if (!res.ok) return reply.code(res.status).send({ error: "ledger rejected the entry", ledger });

@@ -11,6 +11,7 @@ import {
   config,
   txnTokenVerifier,
   requireWorkload,
+  claimedOrigin,
   note,
   registerTrailRoute,
 } from "@txndemo/shared";
@@ -45,7 +46,7 @@ app.post("/entries", async (req, reply) => {
     hop: "ledger-service",
     token: req.headers["txn-token"],
     payload,
-    workload: "activity-api (shared internal credential)",
+    workload: claimedOrigin(req),
     validated: [
       "calling workload authenticated",
       "RS256 signature against AIC's JWKS",

@@ -39,6 +39,15 @@ const existing = db.prepare("SELECT 1 FROM entries WHERE txn = ?");
  * tripped NOT NULL, changed no rows, and was reported to the caller as a
  * replay of a transaction that had never happened. A real integrity error
  * now throws and surfaces as a 500, which is what it is.
+ *
+ * The SELECT-then-INSERT is safe here and only here: one ledger process,
+ * `node:sqlite` is synchronous, and nothing can interleave between the two
+ * statements. Run two processes against this file and the same new txn
+ * arriving twice can pass both lookups, leaving the loser with a primary-key
+ * error and a 500 instead of the 409 it was promised. The demo does not
+ * replicate the ledger; anything that did would need the insert itself to
+ * decide, with the constraint error caught and classified rather than
+ * swallowed wholesale.
  */
 export function record(payload) {
   if (existing.get(payload.txn)) return "replay";

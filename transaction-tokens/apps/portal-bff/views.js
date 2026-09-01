@@ -86,7 +86,7 @@ function trailCard(result) {
 // The side-by-side view: one column per hop, the same decoded payload and
 // the same token hash down the row. Identical hashes are the evidence the
 // token was forwarded unchanged; no column ever shows the token itself.
-export function trailPage({ txn, unchanged, hops }) {
+export function trailPage({ txn, unchanged, complete, sources, hops }) {
   const cards = hops
     .map(
       (h) => `<div class="hop">
@@ -104,11 +104,20 @@ export function trailPage({ txn, unchanged, hops }) {
     `<p class="meta"><a href="/">&larr; back</a> · txn <code>${esc(txn)}</code></p>
 ${
   unchanged
-    ? `<p class="same">Every hop saw the same token hash — the Txn-Token was forwarded
-       unmodified from the moment AIC minted it. Nothing below is a complete token:
-       a hash for correlation, and the decoded <code>tctx</code> with the signature stripped.</p>`
-    : `<div class="warn">The hops did not all see the same token. That should not happen —
-       no hop is supposed to re-issue.</div>`
+    ? `<p class="same">All three hops reported, and all three saw the same token hash — the
+       Txn-Token was forwarded unmodified from the moment AIC minted it. Nothing below is a
+       complete token: a hash for correlation, and the decoded <code>tctx</code> with the
+       signature stripped.</p>`
+    : !complete
+      ? `<div class="warn">Not every hop reported, so this proves nothing either way.
+         ${esc(
+           (sources ?? [])
+             .filter((s) => s.status !== "ok")
+             .map((s) => `${s.name}: ${s.status}${s.detail ? ` (${s.detail})` : ""}`)
+             .join(" · "),
+         )}</div>`
+      : `<div class="warn">The hops did not all see the same token. That should not happen —
+         no hop is supposed to re-issue.</div>`
 }
 <div class="hops">${cards}</div>`,
   );

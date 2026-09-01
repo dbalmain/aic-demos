@@ -74,10 +74,18 @@ would reflect it.
 
 **Exactly one change flips it,** which is worth knowing because it's what makes
 this a demonstration of the policy rather than a coincidence. In
-`terraform/policy.tf`, point `TxnDemoIssuance_AssertCost`'s `claim_value` at
-`local.subject_scopes.service` instead of `.human`, apply, and the next mint
-gives the job its cost and takes the account manager's away. Nothing else needs
-to change; nothing else is independently blocking it.
+`terraform/policy.tf`, change `TxnDemoIssuance_DenyCost`'s `action_values` from
+`{ assert = false }` to `{ assert = true }`, apply, and the very next mint gives
+the job its cost. Nothing else needs to change; nothing else is independently
+blocking it.
+
+The refusal is a **written-down `no`**, not an absence. The policy set holds two
+rules — an allow for the account manager's scope and an explicit deny for the
+job's — because a policy set with only the allow answers a non-matching subject
+with "no policy applied", which is exactly what a _deleted_ policy also looks
+like. Both would have produced a cost-free token and the same cheerful "refused
+as expected" message. The mint now requires an explicit `true` or `false` and
+fails outright on anything else, so the demo cannot succeed by accident.
 
 Two honest caveats, because the wording is easy to get wrong:
 
@@ -154,6 +162,17 @@ decided, and a hash of the token it saw. The same hash in every column is the
 evidence that the token really did traverse the chain unmodified. No column ever
 shows a complete token — a hash correlates, and a decoded payload carries no
 signature, so nothing in the trail can be replayed.
+
+Two things the page is careful about, both of which it previously got wrong:
+
+- It only claims the token was unchanged when **all three** hops actually
+  reported. Stop the two downstream services and it says "not every hop
+  reported, so this proves nothing either way" — where it used to find one
+  surviving record, see one distinct hash, and announce agreement.
+- The "called by" line is labelled **claimed, unverified**, because the shared
+  workload credential genuinely cannot identify a caller. It used to assert
+  `portal-bff`, which was simply false on the nightly job's path — the job calls
+  `activity-api` directly.
 
 ---
 
@@ -272,7 +291,7 @@ terraform -chdir=terraform init
 terraform -chdir=terraform apply
 ```
 
-Read the plan before confirming — it should be **14 to add, 0 to change, 0 to
+Read the plan before confirming — it should be **15 to add, 0 to change, 0 to
 destroy**, all of them prefixed `TxnDemo`. This creates, in your tenant:
 
 - three OAuth2 clients — the account manager's sign-in, the job's sign-in, and
@@ -280,7 +299,8 @@ destroy**, all of them prefixed `TxnDemo`. This creates, in your tenant:
 - four AM scripts — two `may_act` stamps, the narrowing gate, and the script
   that mints `tctx` and applies the issuance policy;
 - two policy sets — which internal scopes a subject may be given, and which
-  `tctx` fields it may assert;
+  `tctx` fields it may assert (the second holds an explicit allow _and_ an
+  explicit deny, so a refusal is a decision rather than a silence);
 - one managed-object type, `bravo_txn_client`, plus the relationship linking a
   client to its account manager.
 
@@ -325,19 +345,26 @@ whether it's your tenant or the apps. Expect:
 
 ```text
 Gate A + Gate B, as the account manager
-  cost requested, policy allows it     {"activity_type":"advisory","client_display":"Acme Holdings", … "cost_cents":45000, …}
+  cost requested, policy allows it    scope=[client:activity:write] {"activity_type":"advisory","client_display":"Acme Holdings", … "cost_cents":45000, …}
 
 Gate B, as the nightly job — the demonstration
-  same cost requested, policy refuses it  {"activity_type":"accrual","delivered_on":"…"}
+  same cost requested, policy refuses it  scope=[client:activity:write] {"activity_type":"accrual","delivered_on":"…"}
 
 Input validation — a malformed request is rejected, not signed
   activity_type is not a string                  REJECTED (invalid_request)
-  delivered_on is not a date                     REJECTED (invalid_request)
+  delivered_on is not date-shaped                REJECTED (invalid_request)
+  delivered_on is not a real date                REJECTED (invalid_request)
   cost_cents is negative                         REJECTED (invalid_request)
   client_ref names a client not theirs           REJECTED (invalid_request)
+  no activity type or date at all                REJECTED (invalid_request)
 
 All checks behaved as expected. The tenant side is good; run 'cd apps && npm run dev'.
 ```
+
+Note the `scope=` on each success line. Checking only the transaction context
+would let this script pass with the narrowing gate completely broken: Gate A
+fails closed to an _empty_ scope, Gate B keeps answering correctly, and the
+services downstream would then reject the very tokens this script had blessed.
 
 The second block is the whole point of the demo: the same request, the same
 `cost_cents`, a different signed-in identity, and AIC declines to stamp the
@@ -412,7 +439,14 @@ scripts/teardown.sh --all    # the above, then terraform destroy
 ```
 
 Records come off before configuration, or the managed-object type outlives the
-rows that depend on it. `--all` needs the same environment step 3 set up.
+rows that depend on it. `--all` needs the same environment step 3 set up, and
+teardown stops before destroying anything if a tenant step failed.
+
+One thing to know before running it against a tenant that is not yours alone:
+the two identities are addressed by **fixed UUIDs**, and `seed.sh` adopts a
+record it finds at one of those ids rather than failing. If such a record
+predated the demo, teardown deletes it — it has no way to tell what it created
+from what it adopted. The script says so as it runs.
 
 ### When something goes wrong
 

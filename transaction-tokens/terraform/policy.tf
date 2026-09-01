@@ -74,10 +74,23 @@ resource "pingoneaic_policy_set" "issuance" {
   conditions        = ["OAuth2Scope", "AND", "OR", "NOT", "Script", "SimpleTime"]
 }
 
+# Two policies, not one, and the second is the point.
+#
+# A policy set with only the ALLOW row answers a non-matching subject with
+# `actions: {}` — "no policy applied" (docs/api/21-am-policies.md). That is
+# indistinguishable, at the script, from "the policy you meant to consult has
+# been deleted or no longer matches this resource". Both produce a cost-free
+# token, and the demo would print "refused by the issuance policy, as
+# expected" in either case: the headline passing for a reason that is not the
+# policy at all.
+#
+# So the refusal is written down. The nightly job's scope gets an explicit
+# `assert = false`, the script requires a boolean either way, and an empty
+# decision now means a broken configuration rather than a quiet no.
 resource "pingoneaic_policy" "assert_cost" {
   realm            = var.realm
   name             = "TxnDemoIssuance_AssertCost"
-  description      = "Only a real account manager's subject token may assert tctx/cost_cents."
+  description      = "An account manager's subject token may assert tctx/cost_cents."
   policy_set       = pingoneaic_policy_set.issuance.remote_name
   resource_type_id = pingoneaic_resource_type.issuance.id
   resources        = ["tctx/cost_cents"]
@@ -87,5 +100,21 @@ resource "pingoneaic_policy" "assert_cost" {
     type        = "JwtClaim"
     claim_name  = "scope"
     claim_value = local.subject_scopes.human
+  }
+}
+
+resource "pingoneaic_policy" "deny_cost" {
+  realm            = var.realm
+  name             = "TxnDemoIssuance_DenyCost"
+  description      = "The nightly job's service token may NOT assert tctx/cost_cents — an explicit no, so the script can tell a decision from a misconfiguration."
+  policy_set       = pingoneaic_policy_set.issuance.remote_name
+  resource_type_id = pingoneaic_resource_type.issuance.id
+  resources        = ["tctx/cost_cents"]
+  action_values    = { assert = false }
+
+  subject {
+    type        = "JwtClaim"
+    claim_name  = "scope"
+    claim_value = local.subject_scopes.service
   }
 }

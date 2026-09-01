@@ -40,7 +40,7 @@ const txn = await exchange(cfg, serviceToken.access_token, { requestDetails, req
 
 const res = await fetch(`${cfg.activityApiUrl}/activities`, {
   method: "POST",
-  headers: { ...workloadHeaders(cfg), "txn-token": txn.access_token, "content-type": "application/json" },
+  headers: { ...workloadHeaders(cfg, "accrual-job"), "txn-token": txn.access_token, "content-type": "application/json" },
   body: JSON.stringify({ note: "monthly accrual" }),
 });
 const result = await res.json();

@@ -37,9 +37,27 @@ function constantTimeEqual(a, b) {
   return timingSafeEqual(x, y);
 }
 
-/** The header an internal caller sends. */
-export function workloadHeaders(cfg) {
-  return { authorization: `Bearer ${cfg.internalToken}` };
+/**
+ * The headers an internal caller sends.
+ *
+ * `x-txndemo-origin` is a CLAIM, not a credential: the shared secret cannot
+ * tell one workload from another, so the receiving hop has no way to check
+ * it. It exists because the trail has to say something about who called, and
+ * a name it has verified is not available — recording an assumed one was
+ * worse: the nightly job calls activity-api directly, and the trail
+ * confidently attributed its requests to portal-bff, a service that was
+ * never in the call. Labelled as unverified everywhere it is displayed.
+ */
+export function workloadHeaders(cfg, origin) {
+  const headers = { authorization: `Bearer ${cfg.internalToken}` };
+  if (origin) headers["x-txndemo-origin"] = origin;
+  return headers;
+}
+
+/** The caller's own claim about who it is. Never verified — see above. */
+export function claimedOrigin(req) {
+  const raw = String(req.headers["x-txndemo-origin"] ?? "").slice(0, 64);
+  return /^[a-z0-9-]+$/.test(raw) ? `${raw} (claimed, unverified)` : "unidentified caller";
 }
 
 /**

@@ -389,7 +389,7 @@
       <tr><td>Realm</td><td><code>bravo</code>, alongside <code>capability-tokens</code></td></tr>
       <tr><td>Services</td><td>Fastify</td></tr>
       <tr><td>Account manager <code>sub</code></td><td>human-readable, e.g. <code>am-alice</code> — not AIC's raw UUID</td></tr>
-      <tr><td>Nightly job</td><td>asks for a cost-bearing entry, is refused by the issuance policy because its subject token carries no account-manager scope, and records the cost-free entry it got back — <strong>the refusal is the demo</strong></td></tr>
+      <tr><td>Nightly job</td><td>asks for a cost-bearing entry, is refused by the issuance policy because its subject token carries no account-manager scope, and records the cost-free entry it got back — <strong>the refusal is the demo</strong>. The refusal is an explicit <code>assert = false</code> policy, not an absence: &ldquo;no policy applied&rdquo; and &ldquo;the policy said no&rdquo; look identical from a script, so the mint demands a boolean and fails on anything else.</td></tr>
     </tbody>
   </table>
   </div>
@@ -702,6 +702,17 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
     Nothing in a trail is a usable credential: a hash correlates, and a decoded payload
     carries no signature. The trails are in memory, capped, and each service's own
     <code>/trail</code> still sits behind the workload credential.
+  </p>
+  <p>
+    Two things the view is careful about, because the first version of it was evidence
+    that could not fail. The green verdict requires <strong>all three</strong> hops to have
+    reported — unreachable, non-200, unreadable and genuinely empty are four different
+    states, and collapsing them into &ldquo;no entries&rdquo; meant stopping the downstream
+    services left one surviving record, one hash, and a page announcing unanimity. And the
+    &ldquo;called by&rdquo; line is labelled <em>claimed, unverified</em>: the shared
+    workload credential cannot identify a caller, so recording an assumed one was worse
+    than saying nothing — the nightly job calls the Activity API directly, and the trail
+    used to attribute its requests to the BFF.
   </p>
 </section>
 

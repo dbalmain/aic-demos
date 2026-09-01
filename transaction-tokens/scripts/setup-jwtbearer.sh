@@ -57,6 +57,13 @@ mkdir -p "$KEY_DIR"
 # tenant-side check then passes (it signs with the CLI's current key) while
 # the Node job fails with invalid_grant, because its stale `kid` is no longer
 # published. Compare the kid, and replace the file when it has drifted.
+#
+# A kid IDENTIFIES a key; it does not prove the local n/e belong to it. Hand-
+# edit signing.jwk to hold different key material under the right kid and this
+# still says "already current", while AIC selects the published public key by
+# kid and rejects the signature. Rotation always changes the kid, so the
+# supported path is covered — but the check is a kid check, not a proof of
+# possession, and calling it convergence is the strongest honest claim.
 # `key list` marks this install's own published key with * in MINE; that is
 # the one `key export` hands out. (`--out /dev/stdout` is refused — the
 # command will not overwrite an existing path.)
