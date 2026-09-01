@@ -19,3 +19,5 @@ terraform/*.tfvars
 # Live evidence capture. A HAR or a raw response body is the usual way a
 # client's hostname reaches a repo (pingone-aic-manager .ai/core.md §3).
 *.har
+/workspace/
+/.ai/local.md

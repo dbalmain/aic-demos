@@ -1,4 +1,12 @@
 .env
+.envrc
 *.log
 node_modules/
 .aic/
+
+# Live evidence capture. A HAR, or a raw response body, is the usual way a
+# client's hostname reaches a repo — see pingone-aic-manager .ai/core.md §3,
+# whose scanner checks for exactly these rules.
+*.har
+/workspace/
+/.ai/local.md
