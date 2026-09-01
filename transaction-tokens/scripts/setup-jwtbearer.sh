@@ -51,9 +51,28 @@ fi
 # never in this repo.
 KEY_DIR="$ROOT/apps/accrual-job/.keys"
 mkdir -p "$KEY_DIR"
-if [ -s "$KEY_DIR/signing.jwk" ]; then
-  say "signing key already present at apps/accrual-job/.keys/signing.jwk — keeping it"
+# Idempotence here has to mean CONVERGENCE, not "a file exists". `aic
+# jwt-bearer key export` refuses to overwrite, so the naive fix was to skip
+# when the file is non-empty — which keeps a key from before a rotation. The
+# tenant-side check then passes (it signs with the CLI's current key) while
+# the Node job fails with invalid_grant, because its stale `kid` is no longer
+# published. Compare the kid, and replace the file when it has drifted.
+# `key list` marks this install's own published key with * in MINE; that is
+# the one `key export` hands out. (`--out /dev/stdout` is refused — the
+# command will not overwrite an existing path.)
+current_kid=$(aic --no-prompt jwt-bearer key list --realm "$REALM" 2>/dev/null |
+  awk '$NF=="*" {print $1}' | head -1)
+local_kid=""
+[ -s "$KEY_DIR/signing.jwk" ] && local_kid=$(jq -r '.kid // empty' "$KEY_DIR/signing.jwk" 2>/dev/null || true)
+
+if [ -z "$current_kid" ]; then
+  echo "error: could not read the issuer's current signing key from aic." >&2
+  exit 1
+elif [ "$local_kid" = "$current_kid" ]; then
+  say "signing key already current (kid $current_kid) — keeping it"
 else
+  [ -n "$local_kid" ] && say "local key is stale (kid $local_kid) — replacing it"
+  rm -f "$KEY_DIR/signing.jwk"
   aic --no-prompt jwt-bearer key export --out "$KEY_DIR/signing.jwk"
   say "signing key written to apps/accrual-job/.keys/signing.jwk (gitignored)"
 fi

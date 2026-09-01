@@ -60,31 +60,45 @@ exchange() { # $1 subject token, $2 request_details JSON
     "$TOKEN_URL"
 }
 
-show_tctx() { # stdin: an exchange response
-  local body; body=$(cat)
-  if [ "$(printf '%s' "$body" | jq -r '.error // empty')" != "" ]; then
-    printf '%s' "$body" | jq -c '{error, error_description}'
-    return 1
-  fi
-  printf '%s' "$body" | jq -r .access_token | claims | jq -c '{sub, req_wl, scope, tctx}'
-}
-
 fail=0
+# Every success case checks the SCOPE as well as tctx. Checking only tctx was
+# a false green waiting to happen: delete the TxnDemoScopes policy set and
+# Gate A fails closed to an empty scope, but Gate B keeps answering correctly,
+# so every line here passed while the narrowing gate was entirely broken — and
+# the Node services then rejected the very tokens this script had blessed.
+WANT_SCOPE="client:activity:write"
+
 check() { # $1 label, $2 expected ("cost"|"nocost"|"error")
-  local label=$1 want=$2 out rc
+  local label=$1 want=$2 out rc payload tctx scope
   out=$(cat); rc=0
   case "$want" in
     error)
       if printf '%s' "$out" | jq -e '.error' >/dev/null 2>&1; then
         printf '  %-46s REJECTED (%s)\n' "$label" "$(printf '%s' "$out" | jq -r .error)"
-      else rc=1; fi ;;
+      else
+        rc=1
+      fi ;;
     cost|nocost)
-      local tctx
-      tctx=$(printf '%s' "$out" | jq -r '.access_token // empty' | claims | jq -c .tctx 2>/dev/null) || rc=1
-      if [ -z "$tctx" ] || [ "$tctx" = "null" ]; then rc=1
-      elif [ "$want" = cost ]   && [ "$(printf '%s' "$tctx" | jq -r '.cost_cents // "absent"')" = absent ]; then rc=1
-      elif [ "$want" = nocost ] && [ "$(printf '%s' "$tctx" | jq -r '.cost_cents // "absent"')" != absent ]; then rc=1
-      else printf '  %-46s %s\n' "$label" "$tctx"; fi ;;
+      payload=$(printf '%s' "$out" | jq -r '.access_token // empty' | claims 2>/dev/null) || payload=""
+      if [ -z "$payload" ]; then
+        rc=1
+      else
+        tctx=$(printf '%s' "$payload" | jq -c '.tctx // empty')
+        scope=$(printf '%s' "$payload" | jq -r '(.scope // []) | if type=="array" then join(" ") else . end')
+        if [ -z "$tctx" ]; then
+          rc=1
+        elif ! printf '%s' " $scope " | grep -q " $WANT_SCOPE "; then
+          printf '  %-46s GATE A FAILED: scope is [%s], expected %s\n' "$label" "$scope" "$WANT_SCOPE"
+          fail=1
+          return
+        elif [ "$want" = cost ] && [ "$(printf '%s' "$tctx" | jq -r '.cost_cents // "absent"')" = absent ]; then
+          rc=1
+        elif [ "$want" = nocost ] && [ "$(printf '%s' "$tctx" | jq -r '.cost_cents // "absent"')" != absent ]; then
+          rc=1
+        else
+          printf '  %-46s scope=[%s] %s\n' "$label" "$scope" "$tctx"
+        fi
+      fi ;;
   esac
   if [ "$rc" -ne 0 ]; then
     printf '  %-46s UNEXPECTED: %s\n' "$label" "$(printf '%s' "$out" | head -c 300)"
@@ -108,10 +122,13 @@ exchange "$JOB" '{"activity_type":"accrual","delivered_on":"2026-09-01","cost_ce
 
 echo
 echo "Input validation — a malformed request is rejected, not signed"
-exchange "$HUMAN" '{"activity_type":{"admin":true}}'                   | check "activity_type is not a string"        error
-exchange "$HUMAN" '{"delivered_on":"not-a-date"}'                      | check "delivered_on is not a date"           error
-exchange "$HUMAN" '{"cost_cents":-1}'                                  | check "cost_cents is negative"               error
-exchange "$HUMAN" '{"client_ref":"NOPE-9999","cost_cents":100}'        | check "client_ref names a client not theirs" error
+D='"activity_type":"advisory","delivered_on":"2026-01-01"'
+exchange "$HUMAN" '{"activity_type":{"admin":true},"delivered_on":"2026-01-01"}' | check "activity_type is not a string"        error
+exchange "$HUMAN" '{"activity_type":"advisory","delivered_on":"not-a-date"}'     | check "delivered_on is not date-shaped"     error
+exchange "$HUMAN" '{"activity_type":"advisory","delivered_on":"2026-02-31"}'     | check "delivered_on is not a real date"     error
+exchange "$HUMAN" "{$D,\"cost_cents\":-1}"                                      | check "cost_cents is negative"              error
+exchange "$HUMAN" "{$D,\"client_ref\":\"NOPE-9999\",\"cost_cents\":100}"      | check "client_ref names a client not theirs" error
+exchange "$HUMAN" '{}'                                                           | check "no activity type or date at all"     error
 
 echo
 if [ "$fail" -eq 0 ]; then

@@ -28,12 +28,27 @@ case "$who" in
 esac
 [ -n "$password" ] || { echo "error: no password for $who in .env" >&2; exit 2; }
 
-if aic_call PATCH "$IDM/managed/bravo_user/$id" --data "$(jq -nc --arg p "$password" \
-    '[{operation:"replace",field:"/password",value:$p}]')" >/dev/null 2>&1; then
+# Keep the status and the body: telling an operator "pick a different
+# password" when the real answer was 401 or 404 sends them somewhere useless.
+body=$(mktemp)
+trap 'rm -f "$body"' EXIT
+if AICURL_BODY="$body" aic_call PATCH "$IDM/managed/bravo_user/$id" --data "$(jq -nc --arg p "$password" \
+    '[{operation:"replace",field:"/password",value:$p}]')" >/dev/null 2>"$body.err"; then
   say "$who password set from .env"
-else
-  echo "  refused (403 is the realm's password history: this value has been used" >&2
-  echo "  before, possibly as the current one). Try signing in first; if that also" >&2
-  echo "  fails, put a password the realm has never seen in .env and re-run." >&2
-  exit 1
+  exit 0
 fi
+
+status=$(sed -n 's/.*-> HTTP \([0-9]*\).*/\1/p' "$body.err" | tail -1)
+case "$status" in
+  403)
+    echo "  403 — the realm's password history refuses this value: it has been used" >&2
+    echo "  before, quite possibly as the CURRENT one. Try signing in first; if that" >&2
+    echo "  also fails, put a password the realm has never seen in .env and re-run." >&2 ;;
+  401) echo "  401 — the agent's token was rejected. Run 'aic login' and retry." >&2 ;;
+  404) echo "  404 — no managed/bravo_user/$id. Run scripts/seed.sh first." >&2 ;;
+  "")  echo "  the request did not complete. Details:" >&2; sed 's/^/    /' "$body.err" >&2 ;;
+  *)   echo "  HTTP $status — not the password-history case. Response:" >&2
+       head -c 600 "$body" | sed 's/^/    /' >&2; echo >&2 ;;
+esac
+rm -f "$body.err"
+exit 1
