@@ -233,12 +233,15 @@ sits behind the workload credential.
 Two things the view is careful about, because the first version of it was
 evidence that could not fail:
 
-- The green "every hop saw the same token" verdict requires **all three** hops
-  to have reported. An unreachable service, a non-200, unreadable JSON and a
-  genuinely empty trail are four different states and are reported as such —
-  collapsing them into "no entries" meant that stopping the two downstream
+- The green "every hop saw the same token" verdict requires **every hop in that
+  chain** to have reported. An unreachable service, a non-200, unreadable JSON
+  and a genuinely empty trail are four different states and are reported as such
+  — collapsing them into "no entries" meant that stopping the two downstream
   services left one surviving record, one distinct hash, and a page announcing
-  unanimity.
+  unanimity. Which hops a chain has depends on where it started: the nightly job
+  calls `activity-api` directly, so `portal-bff` is required only for
+  portal-originated transactions, and the page names the flow it detected rather
+  than reporting the job as permanently incomplete.
 - The "called by" line is labelled **claimed, unverified**. The shared workload
   credential cannot identify a caller (departure 3), so the name comes from a
   header the caller sets and nothing checks it. Recording an assumed one was

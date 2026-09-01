@@ -705,10 +705,13 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
   </p>
   <p>
     Two things the view is careful about, because the first version of it was evidence
-    that could not fail. The green verdict requires <strong>all three</strong> hops to have
-    reported — unreachable, non-200, unreadable and genuinely empty are four different
-    states, and collapsing them into &ldquo;no entries&rdquo; meant stopping the downstream
-    services left one surviving record, one hash, and a page announcing unanimity. And the
+    that could not fail. The green verdict requires <strong>every hop in that chain</strong>
+    to have reported — unreachable, non-200, unreadable and genuinely empty are four
+    different states, and collapsing them into &ldquo;no entries&rdquo; meant stopping the
+    downstream services left one surviving record, one hash, and a page announcing
+    unanimity. Which hops a chain has depends on where it started: the nightly job calls the
+    Activity API directly, so the BFF is required only for portal-originated transactions,
+    and the page names the flow it detected. And the
     &ldquo;called by&rdquo; line is labelled <em>claimed, unverified</em>: the shared
     workload credential cannot identify a caller, so recording an assumed one was worse
     than saying nothing — the nightly job calls the Activity API directly, and the trail
