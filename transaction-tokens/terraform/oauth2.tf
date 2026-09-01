@@ -36,7 +36,7 @@ resource "pingoneaic_oauth2_client" "web" {
 # The nightly job's own identity. It authenticates itself via jwt-bearer (its
 # own key, verified against a Trusted JWT Issuer) — there is no user, so this
 # is the closest AIC-native analogue of the draft's "self-signed subject_token,
-# no user" flow (departure #7, ARCHITECTURE.md). The grant type is plain config
+# no user" flow (departure #9, ARCHITECTURE.md). The grant type is plain config
 # and lives here; the Trusted JWT Issuer itself (a signing keypair) is set up
 # by scripts/setup-jwtbearer.sh, not Terraform — the provider has no
 # TrustedJwtIssuer resource yet, and a signing keypair is closer to a runtime
