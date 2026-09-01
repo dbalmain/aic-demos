@@ -51,11 +51,19 @@ resource "pingoneaic_resource_type" "issuance" {
   }
 }
 
-# Gate B — may THIS workload assert a cost? The BFF's subject token carries
-# the human account manager's scope; the nightly job's own service token
-# never does (terraform/variables.tf's subject_scopes). A capability token
-# outlives neither identity being revoked, but this gate is re-run on every
-# mint, so revoking the human scope closes it immediately.
+# Gate B — may THIS SUBJECT assert a cost? The account manager's subject token
+# carries the human scope; the nightly job's own service token never does
+# (local.subject_scopes). Note "subject", not "workload": both programs
+# authenticate the exchange as the same client, so this cannot and does not
+# distinguish the BFF from the job as callers — see departure 8 in
+# ARCHITECTURE.md.
+#
+# The gate is re-run on every mint, so a change HERE takes effect on the next
+# token. That is not the same as revocation being immediate: policy.evaluate
+# reads the `scope` claim frozen into the subject token, so removing a scope
+# from the client configuration has no effect on subject tokens already issued
+# until they expire. Editing the policy is immediate; changing what future
+# subject tokens carry is not.
 resource "pingoneaic_policy_set" "issuance" {
   realm             = var.realm
   name              = "TxnDemoIssuance"

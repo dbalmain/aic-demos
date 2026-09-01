@@ -723,7 +723,7 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
   <h3>Deliberate reductions</h3>
   <ul class="plain">
     <li><strong>No mTLS on the BFF→AIC exchange.</strong> The draft requires mutual authentication there, because the access token is in flight on that hop. We use <code>client_secret_basic</code> and say so.</li>
-    <li><strong>Workload identity on internal hops is a shared secret</strong>, not SPIFFE or mTLS. It <em>is</em> a separate credential in <code>Authorization</code>, checked before the Txn-Token, so the draft&rsquo;s "two headers, two subjects" property holds — but every service presents the same one, so a hop knows an internal caller reached it, not <em>which</em> one.</li>
+    <li><strong>Workload identity on internal hops is a shared secret</strong>, not SPIFFE or mTLS. It <em>is</em> a separate credential in <code>Authorization</code>, checked before the Txn-Token, so the draft&rsquo;s requirement that a Txn-Token must not authenticate its bearer holds. It does <em>not</em> authenticate which workload: every service presents the identical value, so the ledger cannot tell the Activity API from the BFF, nor require that its caller was the previous hop. A separate shortfall from the <code>req_wl</code> one below — that is about who may MINT, this is about who may CALL.</li>
     <li><strong>One trust domain.</strong> No cross-domain chaining.</li>
     <li><strong>Signing keys are the realm&rsquo;s</strong>, not TTS-specific — arguably better than the draft&rsquo;s static-dev-keys concession, but not what it describes.</li>
     <li><strong>Enrichment data lives inside AIC itself</strong> (a managed object), not the app&rsquo;s own database. The draft is silent on where a TTS gets it; keeping it in AIC means setup is a <code>terraform apply</code>, no tunnel.</li>
@@ -740,9 +740,13 @@ accessToken.setField(<span class="s">"cost_cents"</span>, java.lang.Integer.valu
       <code>req_wl</code> is <code>TxnDemo_caller</code> in every token and the issuance
       policy keys on the <strong>subject token&rsquo;s scope</strong> instead.
       That is a design choice, not an oversight — one internal exchange identity, with the
-      subject token carrying who originated the request. It means this demo proves
+      gate keying on the subject token&rsquo;s own claims. It means this demo proves
       <em>subject-dependent claim filtering</em>, which is real and is what the refusal
-      shows, and does not prove per-workload issuance control.
+      shows, and does not prove per-workload issuance control. Two related precisions:
+      the subject token carries the transaction&rsquo;s <em>principal</em> — in the human
+      path, the account manager — not the workload that asked; and re-running the gate on
+      every mint makes a POLICY edit immediate, while a scope already frozen into an
+      issued subject token stays there until it expires.
     </li>
     <li>
       <strong>The internally-initiated flow still mints an AIC user token first.</strong>

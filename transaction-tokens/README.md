@@ -79,10 +79,18 @@ this a demonstration of the policy rather than a coincidence. In
 gives the job its cost and takes the account manager's away. Nothing else needs
 to change; nothing else is independently blocking it.
 
-One honest caveat, because the wording is easy to get wrong: the gate keys on
-the **subject** — whose sign-in this is — not on **which service** is asking.
-Both programs authenticate the exchange itself as the same AIC client. See
-departure 8 in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Two honest caveats, because the wording is easy to get wrong:
+
+- The gate keys on the **subject** — whose sign-in this is — not on **which
+  service** is asking. Both programs authenticate the exchange itself as the
+  same AIC client, so this demo does not show per-workload issuance control.
+- "Re-run on every mint" makes a **policy** edit take effect immediately. It
+  does not make a revocation immediate: the gate reads the scope frozen into the
+  subject token, so a token already issued keeps whatever it was given until it
+  expires.
+
+Both are written up as departures 3 and 8 in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## What travels where, and in what format
 

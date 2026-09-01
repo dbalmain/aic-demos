@@ -251,9 +251,13 @@ worth reading before quoting the demo at anyone.
    `client_secret_basic` and say so.
 3. **Workload identity on internal hops is a shared secret**, not SPIFFE or
    mTLS. It IS a separate credential in `Authorization`, checked before the
-   Txn-Token, so the draft's "two headers, two subjects" property holds — but
-   every service presents the same one, so a hop cannot tell _which_ internal
-   service called it, only that an internal one did.
+   Txn-Token, so the draft's requirement that a Txn-Token must not authenticate
+   its bearer holds. What it does **not** do is authenticate _which_ workload:
+   every service presents the identical value, so `ledger-service` cannot tell
+   `activity-api` from `portal-bff`, cannot require that its caller was the
+   previous hop, and `activity-api` "presents its own" only in the sense that
+   the bytes are not a replay of the inbound header. This is a separate
+   shortfall from item 8 and worth counting separately.
 4. **One trust domain.** No cross-domain chaining.
 5. **Signing keys are the realm's**, not TTS-specific. AIC owns them, which is
    arguably better than the draft's "static dev keys" concession.
@@ -273,12 +277,21 @@ worth reading before quoting the demo at anyone.
    policy keys on the **subject token's scope** instead.
 
    This is a deliberate design choice, not an oversight: one internal exchange
-   identity, with the subject token carrying who originated the request. It
-   means the demo proves **subject-dependent claim filtering** — which is real,
-   and is what the refusal demonstrates — and does _not_ prove per-workload
-   issuance control. Anyone holding the shared caller secret and an account
-   manager's subject token gets a cost-bearing token; the gate follows the
-   subject, not the caller.
+   identity, with the gate keying on the subject token's own claims. It means
+   the demo proves **subject-dependent claim filtering** — which is real, and is
+   what the refusal demonstrates — and does _not_ prove per-workload issuance
+   control. Anyone holding the shared caller secret and an account manager's
+   subject token gets a cost-bearing token; the gate follows the subject, not
+   the caller.
+
+   Be careful with the phrase "who originated the request": the subject token
+   carries the transaction's **principal**, which in the human path is the
+   account manager, not the BFF. It says nothing about which workload asked.
+
+   And "re-run on every mint" does not make a revocation immediate.
+   `policy.evaluate` reads the `scope` claim frozen into the subject token, so
+   editing the policy takes effect on the next mint, while removing a scope from
+   the client configuration only affects subject tokens issued after it.
 
 9. **The internally-initiated flow still mints an AIC user token first.** The
    draft's version has the job present a `self_signed` subject token with no
