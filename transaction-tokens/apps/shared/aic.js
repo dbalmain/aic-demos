@@ -52,8 +52,18 @@ async function postForm(url, auth, body) {
     headers: { authorization: auth, "content-type": "application/x-www-form-urlencoded" },
     body: form(body),
   });
-  const json = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // A gateway 502 or an HTML error page is not an OAuth error response.
+    // Surfacing the status beats failing three lines later on a missing
+    // access_token, which is what swallowing this used to look like.
+    throw new Error(`${url} -> HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
   if (json.error) throw new Error(`${json.error}: ${json.error_description ?? ""}`);
+  if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
   return json;
 }
 
@@ -120,6 +130,14 @@ export function exchange(cfg, subjectToken, { requestDetails, requestContext }) 
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
     subject_token: subjectToken,
     subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+    // The draft requires both of these on the request. AM ignores `audience`
+    // under this configuration (the trust domain is set by the modification
+    // script, not negotiated) and answers `requested_token_type` with the
+    // access-token URN rather than the draft's txn_token one — but it
+    // ACCEPTS both (verified 2026-09-01), so sending them costs nothing and
+    // keeps the wire request conformant. See ARCHITECTURE.md's departures.
+    audience: cfg.trustDomain,
+    requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
     scope: cfg.exchangeScope,
     request_details: JSON.stringify(requestDetails ?? {}),
     request_context: JSON.stringify(requestContext ?? {}),
@@ -127,19 +145,48 @@ export function exchange(cfg, subjectToken, { requestDetails, requestContext }) 
 }
 
 /**
- * A verifier for Txn-Tokens. Every hop calls this independently — there is
- * no callback to AIC once the token is minted, which is the whole point of
- * the pattern. `aud` is the trust domain the mint script set, not any one
- * client's id.
+ * A verifier for Txn-Tokens. Every hop calls this independently: no
+ * introspection, no per-token callback to AIC, and no trust in whichever
+ * service handed the token over. It is not fully offline — `jose` fetches
+ * AIC's JWKS on the first verification and caches it, refetching only on an
+ * unseen `kid` — so the honest claim is "no per-token callback", which is
+ * what the pattern actually needs. README says it in those words.
+ *
+ * `aud` is the trust domain the mint script set, not any one client's id.
+ *
+ * Everything below the signature check is the token CONTRACT: a correctly
+ * signed JWT from the same issuer and audience is not automatically a
+ * Txn-Token. AIC currently always sends these claims, so this guards against
+ * token confusion (some other token of ours, same issuer and audience) and
+ * against a future config change quietly dropping one — not against a
+ * demonstrated forgery.
+ *
+ * @param {string[]} requiredScopes operation scopes the caller must hold.
+ *   Gate A can narrow a Txn-Token all the way to an EMPTY scope while still
+ *   minting valid transaction claims (docs/api/22-token-exchange.md), so a
+ *   service that never looks at `scope` treats a fully-narrowed token as a
+ *   fully-authorized one. Checking it here is what makes Gate A load-bearing.
  */
-export async function txnTokenVerifier(cfg) {
+export async function txnTokenVerifier(cfg, requiredScopes = []) {
   const { issuer, jwksUri } = await discover(cfg);
   const jwks = createRemoteJWKSet(new URL(jwksUri));
   return async function verify(token) {
     const { payload } = await jwtVerify(token, jwks, {
       issuer,
       audience: cfg.trustDomain,
+      algorithms: ["RS256"],
+      requiredClaims: ["exp", "iat", "sub", "txn", "req_wl", "tctx"],
     });
+    if (typeof payload.tctx !== "object" || payload.tctx === null) {
+      throw new Error("tctx is not an object");
+    }
+    const held = Array.isArray(payload.scope)
+      ? payload.scope
+      : String(payload.scope ?? "").split(" ").filter(Boolean);
+    const missing = requiredScopes.filter((s) => !held.includes(s));
+    if (missing.length) {
+      throw new Error(`scope ${missing.join(",")} not present (holds: ${held.join(",") || "none"})`);
+    }
     return payload;
   };
 }

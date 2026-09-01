@@ -58,6 +58,13 @@ export function config() {
     trustDomain: process.env.TXNDEMO_TRUST_DOMAIN || "acme-internal",
     portalScope: process.env.TXNDEMO_PORTAL_SCOPE || "portal.activities",
     exchangeScope: process.env.TXNDEMO_EXCHANGE_SCOPE || "client:activity:write",
+    // The workload credential for internal hops, kept deliberately separate
+    // from the Txn-Token: the draft is explicit that a transaction token
+    // must NOT authenticate the calling workload, so a service needs its own
+    // credential as well. A shared secret in `Authorization` is the stub
+    // stand-in for what would be mTLS or a service JWT in production — the
+    // point being that the two headers answer two different questions.
+    internalToken: required("TXNDEMO_INTERNAL_TOKEN"),
     portalPort: Number(process.env.TXNDEMO_PORTAL_PORT || 9000),
     activityApiPort: Number(process.env.TXNDEMO_ACTIVITY_API_PORT || 9002),
     ledgerPort: Number(process.env.TXNDEMO_LEDGER_PORT || 9003),

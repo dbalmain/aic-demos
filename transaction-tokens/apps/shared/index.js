@@ -7,3 +7,4 @@ export {
   txnTokenVerifier,
   userinfo,
 } from "./aic.js";
+export { workloadHeaders, requireWorkload } from "./workload.js";

@@ -13,7 +13,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { config, exchange, loginAsJob } from "@txndemo/shared";
+import { config, exchange, loginAsJob, workloadHeaders } from "@txndemo/shared";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cfg = config();
@@ -40,7 +40,7 @@ const txn = await exchange(cfg, serviceToken.access_token, { requestDetails, req
 
 const res = await fetch(`${cfg.activityApiUrl}/activities`, {
   method: "POST",
-  headers: { "txn-token": txn.access_token, "content-type": "application/json" },
+  headers: { ...workloadHeaders(cfg), "txn-token": txn.access_token, "content-type": "application/json" },
   body: JSON.stringify({ note: "monthly accrual" }),
 });
 const result = await res.json();

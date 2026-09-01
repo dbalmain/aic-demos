@@ -6,7 +6,7 @@ import Fastify from "fastify";
 import formbody from "@fastify/formbody";
 import cookie from "@fastify/cookie";
 import { randomUUID } from "node:crypto";
-import { config, exchange, login, userinfo } from "@txndemo/shared";
+import { config, exchange, login, userinfo, workloadHeaders } from "@txndemo/shared";
 import { dashboard, loginPage } from "./views.js";
 
 const cfg = config();
@@ -65,7 +65,7 @@ app.post("/activities", async (req, reply) => {
     const txn = await exchange(cfg, session.identityToken, { requestDetails, requestContext });
     const res = await fetch(`${cfg.activityApiUrl}/activities`, {
       method: "POST",
-      headers: { "txn-token": txn.access_token, "content-type": "application/json" },
+      headers: { ...workloadHeaders(cfg), "txn-token": txn.access_token, "content-type": "application/json" },
       body: JSON.stringify({ note }), // the free-text note; never read by downstream tctx checks
     });
     result = await res.json();

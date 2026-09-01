@@ -1,13 +1,17 @@
-// ledger-service — the last hop. Validates the same Txn-Token independently,
-// with no callback to AIC and no trust in whoever forwarded it, and writes
-// the entry from tctx alone. If the request body disagrees with tctx, the
-// body loses — that's the whole reason cost lives in the token, not the POST.
+// ledger-service — the last hop. Authenticates the calling workload, then
+// validates the same Txn-Token independently, with no per-token callback to
+// AIC and no trust in whoever forwarded it, and writes the entry from tctx
+// alone. If the request body disagrees with tctx, the body loses — that's
+// the whole reason cost lives in the token, not the POST.
+//
+// This service is two hops from the sign-in and has never seen the account
+// manager's login token. Everything it knows, it knows from a signature.
 import Fastify from "fastify";
-import { config, txnTokenVerifier } from "@txndemo/shared";
+import { config, txnTokenVerifier, requireWorkload } from "@txndemo/shared";
 import { record, all } from "./store.js";
 
 const cfg = config();
-const verifyTxnToken = await txnTokenVerifier(cfg);
+const verifyTxnToken = await txnTokenVerifier(cfg, ["client:activity:write"]);
 
 const app = Fastify({ logger: { transport: { target: "pino-pretty" } } });
 
@@ -26,9 +30,17 @@ async function requireTxnToken(req, reply) {
 }
 
 app.post("/entries", async (req, reply) => {
+  if (!requireWorkload(cfg, req, reply)) return;
   const payload = await requireTxnToken(req, reply);
   if (!payload) return;
   const inserted = record(payload);
+  if (!inserted) {
+    // The same txn arriving twice is a replay, not a second transaction.
+    // 409 rather than 200, so a caller cannot read "recorded" into what is
+    // really "already recorded, nothing done" (the draft leaves strict
+    // single-use optional; this is the honest reporting half of it).
+    reply.code(409);
+  }
   return {
     entry: {
       txn: payload.txn,
@@ -39,7 +51,10 @@ app.post("/entries", async (req, reply) => {
   };
 });
 
-app.get("/entries", async () => ({ entries: all() }));
+app.get("/entries", async (req, reply) => {
+  if (!requireWorkload(cfg, req, reply)) return;
+  return { entries: all() };
+});
 
 app.get("/healthz", async () => ({ ok: true }));
 
