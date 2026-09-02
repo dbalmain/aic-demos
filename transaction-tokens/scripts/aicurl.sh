@@ -10,10 +10,10 @@
 # rather than block on a password an automated caller cannot supply.
 #
 # `aic` resolves its tenant from `.aic/config.toml`, in the current directory
-# by default but from $AIC_PROJECT when that is set. This script sets it
-# (default: the sibling pingone-aic-manager checkout); override it, or
-# AIC_PROJECT_DIR in a gitignored .env, if your checkout lives elsewhere. The
-# tenant hostname is customer-identifying and must not land in this repo,
+# by default but from $AIC_PROJECT when that is set. This repo has no `.aic/`,
+# so AIC_PROJECT must name a pingone-aic-manager checkout that does; the
+# gitignored .env sets it, and there is no sibling-path default to guess wrong.
+# The tenant hostname is customer-identifying and must not land in this repo,
 # which is the other reason the config stays over there.
 #
 # Response body is left in $AICURL_BODY (default /tmp/aicurl.body) and the HTTP
@@ -37,21 +37,29 @@ done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$HERE/../.env" ] && . "$HERE/../.env"
-: "${AIC_PROJECT:=${AIC_PROJECT_DIR:-$HERE/../../../pingone-aic-manager}}"
-if [ ! -f "$AIC_PROJECT/.aic/config.toml" ]; then
-  echo "error: no .aic/config.toml under AIC_PROJECT ($AIC_PROJECT)." >&2
-  echo "  Point AIC_PROJECT at a pingone-aic-manager checkout that has one." >&2
+if [ -z "${AIC_PROJECT:-}" ]; then
+  echo "error: AIC_PROJECT is not set." >&2
+  echo "  Set it in $HERE/../.env to the absolute path of a" >&2
+  echo "  pingone-aic-manager checkout." >&2
   exit 2
 fi
 export AIC_PROJECT
 
 if [ -z "${TENANT_BASE_URL:-}" ]; then
-  TENANT_BASE_URL=$(aic --no-prompt ctx list 2>/dev/null | awk '$1=="*" {print $NF}')
+  # `|| true`: under `set -e` + `pipefail` a failing `aic` would abort here
+  # silently, before the check below could name the cause.
+  TENANT_BASE_URL=$(aic --no-prompt ctx list 2>/tmp/aicurl.err | awk '$1=="*" {print $NF}') || true
 fi
-[ -n "${TENANT_BASE_URL:-}" ] || { echo "error: no tenant base URL; check 'aic ctx current'" >&2; exit 2; }
+if [ -z "${TENANT_BASE_URL:-}" ]; then
+  echo "error: no tenant base URL; check 'aic ctx current'" >&2
+  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
+  exit 2
+fi
 
-if ! TOKEN=$(aic --no-prompt whoami --token 2>/dev/null) || [ -z "$TOKEN" ]; then
-  echo "error: no token from the agent — run 'aic login'" >&2; exit 3
+if ! TOKEN=$(aic --no-prompt whoami --token 2>/tmp/aicurl.err) || [ -z "$TOKEN" ]; then
+  echo "error: no token from the agent — run 'aic login'" >&2
+  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
+  exit 3
 fi
 
 BODY="${AICURL_BODY:-/tmp/aicurl.body}"

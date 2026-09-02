@@ -12,24 +12,30 @@ AM="/am/json/realms/root/realms/$REALM"
 IDM="/openidm"
 AGENT_V="protocol=2.1,resource=1.0"
 
-# `aic` resolves its tenant from a project directory. It reads the cwd by
-# default, but honours AIC_PROJECT, so every script here exports that once
-# instead of wrapping each call in a subshell `cd` — which is what these
-# scripts used to do, inconsistently (aicurl.sh and setup-jwtbearer.sh had
-# two different, and one wrong, default paths). The tenant hostname is
-# customer-identifying, which is the other reason the config stays over
-# there rather than in this repo.
-: "${AIC_PROJECT:=${AIC_PROJECT_DIR:-$ROOT/../../pingone-aic-manager}}"
-if [ ! -f "$AIC_PROJECT/.aic/config.toml" ]; then
-  echo "error: no .aic/config.toml under AIC_PROJECT ($AIC_PROJECT)." >&2
-  echo "  Point AIC_PROJECT at a pingone-aic-manager checkout that has one." >&2
+# `aic` roots at the current directory unless AIC_PROJECT (or --project) names
+# a different one. This repo has no `.aic/`, so AIC_PROJECT must point at a
+# pingone-aic-manager checkout that does; it is set in .env. There is
+# deliberately no sibling-path default: `aic` treats a project directory that
+# is not one as an error rather than falling back to the cwd, so a guessed
+# path can only turn that clear failure into a puzzling one. The tenant
+# hostname is customer-identifying, which is the other reason the config lives
+# over there rather than in this repo.
+if [ -z "${AIC_PROJECT:-}" ]; then
+  echo "error: AIC_PROJECT is not set." >&2
+  echo "  Set it in $ROOT/.env to the absolute path of a pingone-aic-manager" >&2
+  echo "  checkout — the one whose \`aic ctx list\` shows your tenant." >&2
   exit 2
 fi
 export AIC_PROJECT
 
 # Fail here, with the remedy, rather than three curl calls later with a 401.
-if ! aic --no-prompt whoami --token >/dev/null 2>&1; then
-  echo "error: the aic agent is locked or not running. Run: aic login" >&2
+# Report aic's own message rather than a guess: it distinguishes a locked agent
+# from an AIC_PROJECT naming a directory that is not a project, and this check
+# used to blame the former for both.
+if ! err=$(aic --no-prompt whoami --token 2>&1 >/dev/null); then
+  echo "error: aic could not mint a token." >&2
+  if [ -n "$err" ]; then printf '  %s\n' "$err" >&2; fi
+  echo "  If the agent is locked, run: aic login" >&2
   exit 3
 fi
 

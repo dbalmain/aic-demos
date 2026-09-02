@@ -72,24 +72,22 @@ that says "the nightly job can't assert a cost" — that's a policy in AIC anyon
 with console access can open, read, and change, and the very next token-mint
 would reflect it.
 
-**Exactly one change flips it,** which is worth knowing because it's what makes
-this a demonstration of the policy rather than a coincidence. In
-`terraform/policy.tf`, change `TxnDemoIssuance_DenyCost`'s `action_values` from
-`{ assert = false }` to `{ assert = true }`, apply, and the very next mint gives
-the job its cost. Nothing else needs to change; nothing else is independently
-blocking it.
+**The policy is configured in code.** In `terraform/policy.tf`, change
+`TxnDemoIssuance_DenyCost`'s `action_values` from `{ assert = false }` to
+`{ assert = true }`, apply, and the very next mint gives the job its cost.
+Nothing else needs to change; nothing else is independently blocking it.
 
-The refusal is a **written-down `no`**, not an absence. The policy set holds two
-rules — an allow for the account manager's scope and an explicit deny for the
-job's — because a policy set with only the allow answers a non-matching subject
-with "no policy applied", which is exactly what a _deleted_ policy also looks
-like. Both would have produced a cost-free token and the same cheerful "refused
-as expected" message. The mint now requires an explicit `true` or `false` and
-fails outright on anything else, so the demo cannot succeed by accident.
+The refusal is a **written-down `no`**. The policy set holds two rules: an allow
+for the account manager's scope and an explicit deny for the job's. A policy set
+with only the allow answers a non-matching subject with "no policy applied",
+which is exactly what a _deleted_ policy also looks like. Both would have
+produced a cost-free token and the same cheerful "refused as expected" message.
+The mint now requires an explicit `true` or `false` and fails outright on
+anything else, so the demo cannot succeed by accident.
 
-Two honest caveats, because the wording is easy to get wrong:
+Two caveats, because the wording is easy to get wrong:
 
-- The gate keys on the **subject** — whose sign-in this is — not on **which
+- The gate keys on the **subject**, whose sign-in this is, not on **which
   service** is asking. Both programs authenticate the exchange itself as the
   same AIC client, so this demo does not show per-workload issuance control.
 - "Re-run on every mint" makes a **policy** edit take effect immediately. It
@@ -195,24 +193,20 @@ the demo; 9–11 run it.
 | **Node** ≥ 22.13                                               | the four services. Verified on 24.19. `node:sqlite` needs 22.13+ without a flag.                                                                   | `node --version`    |
 | **bash, curl, jq, python3**                                    | the helper scripts                                                                                                                                 | `jq --version`      |
 
-The three repos are expected as siblings. If yours are elsewhere, only
-`AIC_PROJECT` in step 3 needs to know:
-
-```text
-~/w/
-├── pingone-aic-manager/            # the aic CLI + the verified AIC API docs
-├── terraform-provider-pingone-aic/ # the Terraform provider
-└── aic-demos/transaction-tokens/   # you are here
-```
+Those three checkouts can live wherever you like. Nothing here assumes a
+particular layout: `pingone-aic-manager` is reached through the `AIC_PROJECT`
+variable you set in step 2, and the provider only has to be built once, from
+wherever you cloned it.
 
 ### 1. Build and install the Terraform provider
 
 The provider is not published to a registry, and this demo needs fixes that only
 exist in the local checkout. `make install` drops the binary where Terraform
-looks for local plugins.
+looks for local plugins — a machine-wide location, so it does not matter where
+you run it from.
 
 ```sh
-cd ../../terraform-provider-pingone-aic
+cd /path/to/terraform-provider-pingone-aic
 make install
 ```
 
@@ -224,7 +218,7 @@ make install
 ### 2. Fill in your configuration
 
 ```sh
-cd ../aic-demos/transaction-tokens
+cd /path/to/aic-demos/transaction-tokens
 cp .env.example .env
 $EDITOR .env
 ```
@@ -232,6 +226,11 @@ $EDITOR .env
 You need to provide seven values; the comments in the file say the same:
 
 - `AIC_PROJECT` — the **absolute** path to your `pingone-aic-manager` checkout.
+  This is the only thing tying the two repos together: `aic` roots itself there
+  instead of at the current directory, so it finds your tenant config and its
+  credentials. It must be a real project directory — one with a `.aic/` in it —
+  because `aic` rejects a path that isn't rather than quietly falling back to
+  the current one and acting on a different tenant.
 - `TXNDEMO_TENANT_URL` — your tenant's base URL. Get it from `aic ctx list`
   rather than typing it; it's the last column of the row marked `*`.
 - Three client secrets (`..._WEB_...`, `..._JOBSVC_...`, `..._CALLER_...`) —
@@ -270,8 +269,9 @@ Then unlock the AIC agent — everything from here borrows its token:
 aic login
 ```
 
-If that says _no project here_, `AIC_PROJECT` isn't set or points at the wrong
-directory. Re-check step 2 and re-run step 3.
+If that says _no project here_, `AIC_PROJECT` didn't reach this shell — check
+step 2 and re-run step 3. If it says _AIC_PROJECT=… is not a directory_, the
+path is wrong.
 
 Now hand Terraform what it needs:
 
@@ -457,8 +457,9 @@ adopted. The script says so before it starts deleting.
 
 | Symptom                                                                | Cause                                                                                                     |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `aic error: Config error: no project here`                             | `AIC_PROJECT` unset or wrong. Step 2, then re-run step 3.                                                 |
-| `error: the aic agent is locked or not running`                        | Run `aic login`.                                                                                          |
+| `aic error: Config error: no project here`                             | `AIC_PROJECT` never reached this shell. Step 2, then re-run step 3.                                       |
+| `aic error: Config error: AIC_PROJECT=… is not a directory`            | The path is wrong. `aic` will not fall back to the cwd, by design.                                        |
+| `error: aic could not mint a token`                                    | Usually a locked agent: run `aic login`. The line below it is `aic`'s own reason.                         |
 | Terraform 401 / `invalid_token` partway through                        | The agent token expired. Re-run the `PINGONEAIC_ACCESS_TOKEN` export in step 3.                           |
 | `the cached package ... does not match any of the checksums`           | You rebuilt the provider. See the note in step 1.                                                         |
 | `chain.sh`: cannot sign in as `am-alice`                               | The record predates this `.env`. `scripts/reset-password.sh am-alice`, with a password never used before. |
@@ -469,12 +470,12 @@ adopted. The script says so before it starts deleting.
 
 ### Layout
 
-| Path         | What goes there                                                                                                                                                                                            |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/`      | the four services: `portal-bff`, `activity-api`, `ledger-service`, `accrual-job`, plus `shared/` for the AIC calls, the workload credential and the per-hop trail                                          |
+| Path         | What goes there                                                                                                                                                                                           |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/`      | the four services: `portal-bff`, `activity-api`, `ledger-service`, `accrual-job`, plus `shared/` for the AIC calls, the workload credential and the per-hop trail                                         |
 | `terraform/` | the AIC config — this is where the TTS lives: OAuth2 clients, the validate-scope and token-modification scripts, the issuance policies, and the managed-object schema for the manager↔client relationship |
-| `scripts/`   | `seed.sh` (records), `setup-jwtbearer.sh` (the job's key), `chain.sh` (the tenant-side check), `write-env.sh`, `teardown.sh`, `reset-password.sh`, and `am/` — the three AM scripts Terraform uploads      |
-| `docs/`      | the brief, and the architecture page rendered legibly                                                                                                                                                      |
+| `scripts/`   | `seed.sh` (records), `setup-jwtbearer.sh` (the job's key), `chain.sh` (the tenant-side check), `write-env.sh`, `teardown.sh`, `reset-password.sh`, and `am/` — the three AM scripts Terraform uploads     |
+| `docs/`      | the brief, and the architecture page rendered legibly                                                                                                                                                     |
 
 Same approach as [`../capability-tokens/`](../capability-tokens/): Terraform
 owns the tenant configuration, a small script owns the IDM fixtures, and the
