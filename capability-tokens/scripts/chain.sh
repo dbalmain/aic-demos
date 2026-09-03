@@ -13,24 +13,17 @@
 # is the caller's — there is no per-exchange lifetime.
 #
 # Needs: .env (see .env.example), an unlocked aic agent, curl, jq, python3.
-set -eu
+# shellcheck disable=SC1091  # path is computed; lib.sh is linted on its own
+. "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
-here=$(dirname "$0")
-[ -f "$here/../.env" ] && . "$here/../.env"
-: "${CAPTOKEN_REALM:=bravo}"
-: "${CAPTOKEN_LOGIN_CLIENT_ID:=CapTokenDemo_web}"
 : "${CAPTOKEN_LOGIN_CLIENT_SECRET:?set CAPTOKEN_LOGIN_CLIENT_SECRET in .env}"
-: "${CAPTOKEN_CALLER_CLIENT_ID:=CapTokenDemo_caller}"
 : "${CAPTOKEN_CALLER_CLIENT_SECRET:?set CAPTOKEN_CALLER_CLIENT_SECRET in .env}"
 : "${CAPTOKEN_DEMO_PASSWORD:?set CAPTOKEN_DEMO_PASSWORD in .env}"
 
-if [ -z "${TENANT_BASE_URL:-}" ]; then
-  TENANT_BASE_URL=$(cd "${AIC_PROJECT_DIR:-$here/../../../pingone-aic-manager}" &&
-    aic --no-prompt ctx list | awk '$1=="*" {print $NF}')
-fi
-TOKEN_URL="$TENANT_BASE_URL/am/oauth2/realms/root/realms/$CAPTOKEN_REALM/access_token"
-LOGIN_AUTH="$CAPTOKEN_LOGIN_CLIENT_ID:$CAPTOKEN_LOGIN_CLIENT_SECRET"
-CALLER_AUTH="$CAPTOKEN_CALLER_CLIENT_ID:$CAPTOKEN_CALLER_CLIENT_SECRET"
+TENANT_BASE_URL="${TENANT_BASE_URL:-$(aic --no-prompt ctx list | awk '$1=="*" {print $NF}')}"
+TOKEN_URL="$TENANT_BASE_URL/am/oauth2/realms/root/realms/$REALM/access_token"
+LOGIN_AUTH="$LOGIN_CLIENT:$CAPTOKEN_LOGIN_CLIENT_SECRET"
+CALLER_AUTH="$CALLER_CLIENT:$CAPTOKEN_CALLER_CLIENT_SECRET"
 
 claims() { cut -d. -f2 | python3 -c 'import sys,base64,json;p=sys.stdin.read().strip();print(json.dumps(json.loads(base64.urlsafe_b64decode(p+"="*(-len(p)%4)))))'; }
 
@@ -52,8 +45,8 @@ exchange() {  # $1 = subject token, $2 = requested scope -> token (may be empty)
 }
 
 decide() {  # $1 = token, $2 = resource -> the granted actions
-  "$here/aicurl.sh" POST \
-    "/am/json/realms/root/realms/$CAPTOKEN_REALM/policies?_action=evaluate" \
+  "$HERE/aicurl.sh" POST \
+    "/am/json/realms/root/realms/$REALM/policies?_action=evaluate" \
     --apiver protocol=1.0,resource=2.0 \
     --data "$(jq -n --arg t "$1" --arg r "$2" \
       '{resources:[$r],application:"CapTokenDemo",subject:{jwt:$t}}')" \

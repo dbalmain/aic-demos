@@ -1,11 +1,14 @@
-# Shared shell helpers for provision/teardown. Source, don't execute.
+# Shared shell helpers for the demo scripts. Source, don't execute.
 #
 # Everything is addressed by a fixed id so both scripts are idempotent and so
 # Terraform (phase 3) has the same names to import.
+# shellcheck shell=sh
+# shellcheck disable=SC2034  # sourced library; callers consume these
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
+# shellcheck disable=SC1091  # gitignored .env; not a committed source file
 [ -f "$ROOT/.env" ] && . "$ROOT/.env"
 
 REALM="${CAPTOKEN_REALM:-bravo}"
@@ -14,6 +17,33 @@ IDM="/openidm"
 POLICY_V="protocol=1.0,resource=2.0"
 AGENT_V="protocol=2.1,resource=1.0"
 SCRIPT_V="protocol=2.0,resource=1.0"
+
+# `aic` roots at the current directory unless AIC_PROJECT (or --project) names
+# a different one. This repo has no `.aic/`, so AIC_PROJECT must point at a
+# pingone-aic-manager checkout that does; it is set in .env. There is
+# deliberately no sibling-path default: `aic` treats a project directory that
+# is not one as an error rather than falling back to the cwd, so a guessed
+# path can only turn that clear failure into a puzzling one. The tenant
+# hostname is customer-identifying, which is the other reason the config lives
+# over there rather than in this repo.
+if [ -z "${AIC_PROJECT:-}" ]; then
+  echo "error: AIC_PROJECT is not set." >&2
+  echo "  Set it in $ROOT/.env to the absolute path of a pingone-aic-manager" >&2
+  echo "  checkout — the one whose \`aic ctx list\` shows your tenant." >&2
+  exit 2
+fi
+export AIC_PROJECT
+
+# Fail here, with the remedy, rather than three curl calls later with a 401.
+# Report aic's own message rather than a guess: it distinguishes a locked agent
+# from an AIC_PROJECT naming a directory that is not a project, and this check
+# used to blame the former for both.
+if ! err=$(aic --no-prompt whoami --token 2>&1 >/dev/null); then
+  echo "error: aic could not mint a token." >&2
+  if [ -n "$err" ]; then printf '  %s\n' "$err" >&2; fi
+  echo "  If the agent is locked, run: aic login" >&2
+  exit 3
+fi
 
 # The OAuth2 Scope resource type ships with every realm; gate A's policies hang
 # off it rather than off a type of our own, because AM decides scope grants

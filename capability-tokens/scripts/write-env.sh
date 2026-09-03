@@ -13,11 +13,24 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
+# shellcheck disable=SC1091  # gitignored .env; not a committed source file
 [ -f "$ROOT/.env" ] && . "$ROOT/.env"
 
 : "${CAPTOKEN_TENANT_URL:?set it in .env, or export PINGONEAIC_TENANT_URL and re-export it as this}"
 : "${CAPTOKEN_LOGIN_CLIENT_SECRET:?set it in .env}"
 : "${CAPTOKEN_CALLER_CLIENT_SECRET:?set it in .env}"
+
+if [ -z "${AIC_PROJECT:-}" ]; then
+  echo "error: AIC_PROJECT is not set." >&2
+  echo "  Set it in $ROOT/.env to the absolute path of a pingone-aic-manager" >&2
+  echo "  checkout." >&2
+  exit 2
+fi
+# apps/.env is resolved against the app's cwd, not this directory.
+if ! CAPTOKEN_AIC_PROJECT=$(cd "$AIC_PROJECT" 2>/dev/null && pwd); then
+  echo "error: AIC_PROJECT=$AIC_PROJECT is not a directory." >&2
+  exit 2
+fi
 
 OUT=$(cd "$ROOT/terraform" && terraform output -json)
 get() { printf '%s' "$OUT" | jq -r ".$1.value"; }
@@ -42,7 +55,7 @@ CAPTOKEN_CALLER_CLIENT_SECRET=$CAPTOKEN_CALLER_CLIENT_SECRET
 # client's client_credentials token is refused even holding fr:am:*. Supply one,
 # or let shop-api borrow the local aic agent's for development.
 # CAPTOKEN_API_BEARER=
-CAPTOKEN_AIC_PROJECT=${CAPTOKEN_AIC_PROJECT:-${AIC_PROJECT_DIR:-../../pingone-aic-manager}}
+CAPTOKEN_AIC_PROJECT=$CAPTOKEN_AIC_PROJECT
 
 CAPTOKEN_WEB_PORT=${CAPTOKEN_WEB_PORT:-8790}
 CAPTOKEN_API_PORT=${CAPTOKEN_API_PORT:-8791}

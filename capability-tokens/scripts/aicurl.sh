@@ -9,12 +9,12 @@
 # must be unlocked (`aic login`) — --no-prompt makes a locked agent fail fast
 # rather than block on a password an automated caller cannot supply.
 #
-# `aic` resolves its tenant from `.aic/config.toml` in the *current directory*
-# and has no --project flag or env override, so every `aic` call below runs from
-# $AIC_PROJECT_DIR (default: the sibling pingone-aic-manager checkout). Set it
-# in a gitignored .env if your checkout lives elsewhere. The tenant hostname is
-# customer-identifying and must not land in this repo, which is the other reason
-# the config stays over there.
+# `aic` resolves its tenant from `.aic/config.toml`, in the current directory
+# by default but from $AIC_PROJECT when that is set. This repo has no `.aic/`,
+# so AIC_PROJECT must name a pingone-aic-manager checkout that does; the
+# gitignored .env sets it, and there is no sibling-path default to guess wrong.
+# The tenant hostname is customer-identifying and must not land in this repo,
+# which is the other reason the config stays over there.
 #
 # Response body is left in $AICURL_BODY (default /tmp/aicurl.body) and the HTTP
 # status is printed to stderr, so a caller can jq the body without parsing.
@@ -36,22 +36,31 @@ while [ "$#" -gt 0 ]; do
 done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091  # gitignored .env; not a committed source file
 [ -f "$HERE/../.env" ] && . "$HERE/../.env"
-AIC_PROJECT_DIR="${AIC_PROJECT_DIR:-$HERE/../../../pingone-aic-manager}"
-if [ ! -f "$AIC_PROJECT_DIR/.aic/config.toml" ]; then
-  echo "error: no .aic/config.toml under AIC_PROJECT_DIR ($AIC_PROJECT_DIR)." >&2
-  echo "  aic reads its tenant from the cwd; point AIC_PROJECT_DIR at a checkout that has one." >&2
+if [ -z "${AIC_PROJECT:-}" ]; then
+  echo "error: AIC_PROJECT is not set." >&2
+  echo "  Set it in $HERE/../.env to the absolute path of a" >&2
+  echo "  pingone-aic-manager checkout." >&2
+  exit 2
+fi
+export AIC_PROJECT
+
+if [ -z "${TENANT_BASE_URL:-}" ]; then
+  # `|| true`: under `set -e` + `pipefail` a failing `aic` would abort here
+  # silently, before the check below could name the cause.
+  TENANT_BASE_URL=$(aic --no-prompt ctx list 2>/tmp/aicurl.err | awk '$1=="*" {print $NF}') || true
+fi
+if [ -z "${TENANT_BASE_URL:-}" ]; then
+  echo "error: no tenant base URL; check 'aic ctx current'" >&2
+  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
   exit 2
 fi
 
-if [ -z "${TENANT_BASE_URL:-}" ]; then
-  TENANT_BASE_URL=$(cd "$AIC_PROJECT_DIR" && aic --no-prompt ctx list 2>/dev/null \
-    | awk '$1=="*" {print $NF}')
-fi
-[ -n "${TENANT_BASE_URL:-}" ] || { echo "error: no tenant base URL; check 'aic ctx current'" >&2; exit 2; }
-
-if ! TOKEN=$(cd "$AIC_PROJECT_DIR" && aic --no-prompt whoami --token 2>/dev/null) || [ -z "$TOKEN" ]; then
-  echo "error: no token from the agent — run 'aic login'" >&2; exit 3
+if ! TOKEN=$(aic --no-prompt whoami --token 2>/tmp/aicurl.err) || [ -z "$TOKEN" ]; then
+  echo "error: no token from the agent — run 'aic login'" >&2
+  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
+  exit 3
 fi
 
 BODY="${AICURL_BODY:-/tmp/aicurl.body}"
