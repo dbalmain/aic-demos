@@ -8,6 +8,11 @@ set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
+# An explicitly-set AIC_PROJECT is a deliberate per-invocation override
+# (`AIC_PROJECT=/elsewhere scripts/teardown.sh`). Sourcing .env would clobber
+# it — the old `AIC_PROJECT_DIR` spelling got this right by accident, because
+# the name .env set was not the name `aic` read.
+_cli_aic_project="${AIC_PROJECT:-}"
 # shellcheck disable=SC1091  # gitignored .env; not a committed source file
 [ -f "$ROOT/.env" ] && . "$ROOT/.env"
 
@@ -26,12 +31,26 @@ SCRIPT_V="protocol=2.0,resource=1.0"
 # path can only turn that clear failure into a puzzling one. The tenant
 # hostname is customer-identifying, which is the other reason the config lives
 # over there rather than in this repo.
+if [ -n "$_cli_aic_project" ]; then AIC_PROJECT="$_cli_aic_project"; fi
+unset _cli_aic_project
 if [ -z "${AIC_PROJECT:-}" ]; then
   echo "error: AIC_PROJECT is not set." >&2
   echo "  Set it in $ROOT/.env to the absolute path of a pingone-aic-manager" >&2
   echo "  checkout — the one whose \`aic ctx list\` shows your tenant." >&2
   exit 2
 fi
+# Absolute only. A relative path resolves against the directory you happened
+# to run from, so the same command selects a different project — or none —
+# depending on where you stood. The docs have always said absolute; nothing
+# enforced it.
+case "$AIC_PROJECT" in
+  /*) ;;
+  *)
+    echo "error: AIC_PROJECT must be an absolute path (got '$AIC_PROJECT')." >&2
+    echo "  A relative one resolves against the current directory, so the same" >&2
+    echo "  command can select a different project depending on where you run it." >&2
+    exit 2 ;;
+esac
 export AIC_PROJECT
 
 # Fail here, with the remedy, rather than three curl calls later with a 401.
@@ -44,6 +63,35 @@ if ! err=$(aic --no-prompt whoami --token 2>&1 >/dev/null); then
   echo "  If the agent is locked, run: aic login" >&2
   exit 3
 fi
+
+# AIC_PROJECT selects a *project*; the project's current context selects the
+# *tenant*, and `aic ctx use` can move it at any time. So a token that mints
+# proves the agent works, not that it is aimed where this demo expects — and
+# these scripts delete records by fixed id. Refuse unless the context `aic`
+# resolved is the tenant .env names.
+TENANT_BASE_URL="${TENANT_BASE_URL:-$(aic --no-prompt ctx list | awk '$1=="*" {print $NF}')}"
+if [ -z "$TENANT_BASE_URL" ]; then
+  echo "error: no current tenant context — 'aic ctx list' marks none with '*'." >&2
+  echo "  Run 'aic ctx use <name>' in $AIC_PROJECT." >&2
+  exit 3
+fi
+if [ -z "${CAPTOKEN_TENANT_URL:-}" ]; then
+  echo "error: CAPTOKEN_TENANT_URL is not set; cannot confirm which tenant this would touch." >&2
+  echo "  Set it in $ROOT/.env to the base URL of the tenant this demo owns." >&2
+  exit 2
+fi
+if [ "${TENANT_BASE_URL%/}" != "${CAPTOKEN_TENANT_URL%/}" ]; then
+  echo "error: the active aic context is not the tenant this demo is configured for." >&2
+  echo "  aic ctx says : $TENANT_BASE_URL" >&2
+  echo "  .env says    : $CAPTOKEN_TENANT_URL" >&2
+  echo "  Refusing, because these scripts write and delete by fixed id." >&2
+  echo "  Run 'aic ctx use <name>' in $AIC_PROJECT, or fix CAPTOKEN_TENANT_URL." >&2
+  exit 4
+fi
+export TENANT_BASE_URL
+# Lets aicurl.sh skip re-running these checks on every single request.
+AIC_ENV_READY=1
+export AIC_ENV_READY
 
 # The OAuth2 Scope resource type ships with every realm; gate A's policies hang
 # off it rather than off a type of our own, because AM decides scope grants

@@ -46,7 +46,7 @@ end
 
 ## What it looks like working
 
-```
+```text
 $ scripts/chain.sh
 == alice@captoken.demo ==
   identity token : {"scope":["openid"],"demoRoles":["orders.reader","orders.approver"]}
@@ -77,7 +77,7 @@ Three things are worth pointing at in that output:
 
 ## The mechanism
 
-```
+```text
   browser ──► shop-web (BFF)
                  │  1. log in as CapTokenDemo_web   → identity token, scope=[openid], 900s
                  │     the may-act script stamps       may_act={client_id: CapTokenDemo_caller}

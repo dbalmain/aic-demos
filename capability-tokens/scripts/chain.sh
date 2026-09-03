@@ -20,7 +20,8 @@
 : "${CAPTOKEN_CALLER_CLIENT_SECRET:?set CAPTOKEN_CALLER_CLIENT_SECRET in .env}"
 : "${CAPTOKEN_DEMO_PASSWORD:?set CAPTOKEN_DEMO_PASSWORD in .env}"
 
-TENANT_BASE_URL="${TENANT_BASE_URL:-$(aic --no-prompt ctx list | awk '$1=="*" {print $NF}')}"
+# TENANT_BASE_URL comes from lib.sh, which resolves it, refuses an empty one
+# and refuses one that is not the tenant .env names.
 TOKEN_URL="$TENANT_BASE_URL/am/oauth2/realms/root/realms/$REALM/access_token"
 LOGIN_AUTH="$LOGIN_CLIENT:$CAPTOKEN_LOGIN_CLIENT_SECRET"
 CALLER_AUTH="$CALLER_CLIENT:$CAPTOKEN_CALLER_CLIENT_SECRET"
@@ -56,10 +57,19 @@ decide() {  # $1 = token, $2 = resource -> the granted actions
 ORDER=https://shop-api.demo:443/orders/123
 PAYMENT=https://shop-api.demo:443/payments/9
 
+# A sign-in failure used to `continue`, so a run where nothing worked at all
+# still exited 0 and read as a pass. Record it and fail at the end, so the
+# remaining user is still attempted and the transcript stays useful.
+failures=0
+
 for who in alice bob; do
   echo "== $who@captoken.demo =="
   base=$(login "$who@captoken.demo")
-  [ -n "$base" ] || { echo "  login failed"; continue; }
+  if [ -z "$base" ]; then
+    echo "  login failed — check CAPTOKEN_DEMO_PASSWORD and that provision.sh has run"
+    failures=$((failures + 1))
+    continue
+  fi
   echo "  identity token : $(printf '%s' "$base" | claims | jq -c '{scope,demoRoles}')"
   echo "  it may         : $(decide "$base" "$ORDER") on the order"
 
@@ -71,3 +81,9 @@ for who in alice bob; do
     echo "  $want: minted $got -> $(decide "$cap" "$res")"
   done
 done
+
+if [ "$failures" -ne 0 ]; then
+  echo
+  echo "FAILED: $failures of 2 users could not sign in." >&2
+  exit 1
+fi

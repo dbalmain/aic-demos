@@ -36,29 +36,23 @@ while [ "$#" -gt 0 ]; do
 done
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "$HERE/../.env" ] && . "$HERE/../.env"
-if [ -z "${AIC_PROJECT:-}" ]; then
-  echo "error: AIC_PROJECT is not set." >&2
-  echo "  Set it in $HERE/../.env to the absolute path of a" >&2
-  echo "  pingone-aic-manager checkout." >&2
-  exit 2
-fi
-export AIC_PROJECT
-
-if [ -z "${TENANT_BASE_URL:-}" ]; then
-  # `|| true`: under `set -e` + `pipefail` a failing `aic` would abort here
-  # silently, before the check below could name the cause.
-  TENANT_BASE_URL=$(aic --no-prompt ctx list 2>/tmp/aicurl.err | awk '$1=="*" {print $NF}') || true
-fi
-if [ -z "${TENANT_BASE_URL:-}" ]; then
-  echo "error: no tenant base URL; check 'aic ctx current'" >&2
-  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
-  exit 2
+# lib.sh owns the AIC_PROJECT guards, the agent preflight and the tenant-match
+# check. Source it unless a caller already did: lib.sh exports AIC_ENV_READY
+# and TENANT_BASE_URL, so a script driving dozens of requests pays for the
+# checks once instead of per request.
+if [ -z "${AIC_ENV_READY:-}" ]; then
+  # shellcheck disable=SC1091  # path is computed; lib.sh is linted on its own
+  . "$HERE/lib.sh"
 fi
 
-if ! TOKEN=$(aic --no-prompt whoami --token 2>/tmp/aicurl.err) || [ -z "$TOKEN" ]; then
+# Per-process, so parallel invocations cannot overwrite each other's reason
+# before it is printed.
+ERRFILE=$(mktemp) || { echo "error: mktemp failed" >&2; exit 3; }
+trap 'rm -f "$ERRFILE"' EXIT INT TERM
+
+if ! TOKEN=$(aic --no-prompt whoami --token 2>"$ERRFILE") || [ -z "$TOKEN" ]; then
   echo "error: no token from the agent — run 'aic login'" >&2
-  if [ -s /tmp/aicurl.err ]; then sed 's/^/  /' /tmp/aicurl.err >&2; fi
+  if [ -s "$ERRFILE" ]; then sed 's/^/  /' "$ERRFILE" >&2; fi
   exit 3
 fi
 

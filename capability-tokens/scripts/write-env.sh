@@ -20,16 +20,38 @@ ROOT=$(dirname "$HERE")
 : "${CAPTOKEN_LOGIN_CLIENT_SECRET:?set it in .env}"
 : "${CAPTOKEN_CALLER_CLIENT_SECRET:?set it in .env}"
 
-if [ -z "${AIC_PROJECT:-}" ]; then
-  echo "error: AIC_PROJECT is not set." >&2
-  echo "  Set it in $ROOT/.env to the absolute path of a pingone-aic-manager" >&2
-  echo "  checkout." >&2
-  exit 2
+# shop-api needs a service-account bearer to reach ?_action=evaluate. There
+# are two ways to supply one, and requiring the second unconditionally broke
+# the first: CAPTOKEN_API_BEARER is a fixed bearer the app prefers and which
+# needs no `aic` at all, and CAPTOKEN_AIC_PROJECT is the development shortcut
+# that borrows the local agent's. Demand exactly one of them.
+if [ -z "${CAPTOKEN_API_BEARER:-}" ]; then
+  if [ -z "${AIC_PROJECT:-}" ]; then
+    echo "error: neither CAPTOKEN_API_BEARER nor AIC_PROJECT is set." >&2
+    echo "  shop-api needs a service-account bearer for the PDP. Set one in" >&2
+    echo "  $ROOT/.env: a fixed CAPTOKEN_API_BEARER, or AIC_PROJECT pointing at" >&2
+    echo "  a pingone-aic-manager checkout to borrow the local agent's." >&2
+    exit 2
+  fi
+  # `cd` succeeding proves the path exists, not that it is an AIC project —
+  # AIC_PROJECT=/tmp used to be written into apps/.env and fail later, at the
+  # app's first policy call. Ask `aic` instead; it is the authority.
+  if ! err=$(AIC_PROJECT="$AIC_PROJECT" aic --no-prompt ctx current 2>&1 >/dev/null); then
+    echo "error: AIC_PROJECT is not a usable AIC project." >&2
+    if [ -n "$err" ]; then printf '  %s\n' "$err" >&2; fi
+    exit 2
+  fi
 fi
-# apps/.env is resolved against the app's cwd, not this directory.
-if ! CAPTOKEN_AIC_PROJECT=$(cd "$AIC_PROJECT" 2>/dev/null && pwd); then
-  echo "error: AIC_PROJECT=$AIC_PROJECT is not a directory." >&2
-  exit 2
+# apps/.env is resolved against the app's cwd, not this directory, so write an
+# absolute path. Empty when a fixed CAPTOKEN_API_BEARER is in use and no
+# project was configured — pdp-credential.js prefers the bearer and never
+# looks at this.
+CAPTOKEN_AIC_PROJECT=""
+if [ -n "${AIC_PROJECT:-}" ]; then
+  if ! CAPTOKEN_AIC_PROJECT=$(cd "$AIC_PROJECT" 2>/dev/null && pwd); then
+    echo "error: AIC_PROJECT=$AIC_PROJECT is not a directory." >&2
+    exit 2
+  fi
 fi
 
 OUT=$(cd "$ROOT/terraform" && terraform output -json)

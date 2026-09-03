@@ -202,8 +202,8 @@ wherever you cloned it.
 
 The provider is not published to a registry, and this demo needs fixes that only
 exist in the local checkout. `make install` drops the binary where Terraform
-looks for local plugins — a machine-wide location, so it does not matter where
-you run it from.
+looks for local plugins (`~/.terraform.d/plugins`) — a per-user location, so it
+does not matter which directory you run it from.
 
 ```sh
 cd /path/to/terraform-provider-pingone-aic
@@ -232,7 +232,10 @@ You need to provide seven values; the comments in the file say the same:
   because `aic` rejects a path that isn't rather than quietly falling back to
   the current one and acting on a different tenant.
 - `TXNDEMO_TENANT_URL` — your tenant's base URL. Get it from `aic ctx list`
-  rather than typing it; it's the last column of the row marked `*`.
+  rather than typing it; it's the last column of the row marked `*`. The scripts
+  also **refuse to run** when the active `aic` context does not match this
+  value: `AIC_PROJECT` picks a project, but `aic ctx use` decides which tenant
+  inside it is current, and these scripts write and delete by fixed id.
 - Three client secrets (`..._WEB_...`, `..._JOBSVC_...`, `..._CALLER_...`) —
   **you choose these.** Terraform sets them on the clients it creates, so
   nothing external has to agree with them. Any strong random string will do.
@@ -455,18 +458,20 @@ adopted. The script says so before it starts deleting.
 
 ### When something goes wrong
 
-| Symptom                                                                | Cause                                                                                                     |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `aic error: Config error: no project here`                             | `AIC_PROJECT` never reached this shell. Step 2, then re-run step 3.                                       |
-| `aic error: Config error: AIC_PROJECT=… is not a directory`            | The path is wrong. `aic` will not fall back to the cwd, by design.                                        |
-| `error: aic could not mint a token`                                    | Usually a locked agent: run `aic login`. The line below it is `aic`'s own reason.                         |
-| Terraform 401 / `invalid_token` partway through                        | The agent token expired. Re-run the `PINGONEAIC_ACCESS_TOKEN` export in step 3.                           |
-| `the cached package ... does not match any of the checksums`           | You rebuilt the provider. See the note in step 1.                                                         |
-| `chain.sh`: cannot sign in as `am-alice`                               | The record predates this `.env`. `scripts/reset-password.sh am-alice`, with a password never used before. |
-| `chain.sh`: cannot sign in as `svc-accrual-job`                        | Step 6 hasn't run, or ran before step 5 created the identity.                                             |
-| The portal shows `TXNDEMO_… is not set`                                | Step 8 hasn't run, or was run before `terraform apply` finished.                                          |
-| `EADDRINUSE`                                                           | An earlier `npm run dev` is still alive. Stop it — a half-running chain fails two hops from its cause.    |
-| The activity posts, but `client_display` and `client_tier` are missing | The managed-schema write hasn't propagated yet — it can take seconds. Wait, then post again.              |
+| Symptom                                                                       | Cause                                                                                                     |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `aic error: Config error: no project here`                                    | `AIC_PROJECT` never reached this shell. Step 2, then re-run step 3.                                       |
+| `aic error: Config error: AIC_PROJECT=… is not a directory`                   | The path is wrong. `aic` will not fall back to the cwd, by design.                                        |
+| `error: AIC_PROJECT must be an absolute path`                                 | A relative one resolves against wherever you ran from. Use the full path.                                 |
+| `error: the active aic context is not the tenant this demo is configured for` | `aic ctx use` has moved your context. Switch it back, or fix `TXNDEMO_TENANT_URL`.                        |
+| `error: aic could not mint a token`                                           | Usually a locked agent: run `aic login`. The line below it is `aic`'s own reason.                         |
+| Terraform 401 / `invalid_token` partway through                               | The agent token expired. Re-run the `PINGONEAIC_ACCESS_TOKEN` export in step 3.                           |
+| `the cached package ... does not match any of the checksums`                  | You rebuilt the provider. See the note in step 1.                                                         |
+| `chain.sh`: cannot sign in as `am-alice`                                      | The record predates this `.env`. `scripts/reset-password.sh am-alice`, with a password never used before. |
+| `chain.sh`: cannot sign in as `svc-accrual-job`                               | Step 6 hasn't run, or ran before step 5 created the identity.                                             |
+| The portal shows `TXNDEMO_… is not set`                                       | Step 8 hasn't run, or was run before `terraform apply` finished.                                          |
+| `EADDRINUSE`                                                                  | An earlier `npm run dev` is still alive. Stop it — a half-running chain fails two hops from its cause.    |
+| The activity posts, but `client_display` and `client_tier` are missing        | The managed-schema write hasn't propagated yet — it can take seconds. Wait, then post again.              |
 
 ### Layout
 
